@@ -380,6 +380,11 @@ async function api(method, path, body) {
   return r.json();
 }
 
+function isConnectedState(state) {
+  const s = String(state || '').toLowerCase();
+  return s === 'connected' || s === 'mounted';
+}
+
 // ── Dashboard ─────────────────────────────────────────────────
 async function initDash() {
   // Status
@@ -396,7 +401,7 @@ async function initDash() {
   const ls = await api('GET', '/list');
   const m = ls.mounts || [];
   document.getElementById('s-total').textContent = m.length;
-  const conn = m.filter(x => x.state === 'Connected').length;
+  const conn = m.filter(x => isConnectedState(x.state)).length;
   document.getElementById('s-conn').textContent  = conn;
   document.getElementById('s-disc').textContent  = m.length - conn;
   renderMountList('dash-mounts', m, false);
@@ -423,7 +428,7 @@ function renderMountList(targetId, mounts, showDetail) {
 function mountCardHTML(m, showDetail) {
   const svc     = (m.storage || '').toLowerCase();
   const icon    = ICONS[svc] || '💾';
-  const isConn  = m.state === 'Connected';
+  const isConn  = isConnectedState(m.state);
   const badge   = isConn
     ? `<span class="badge connected">Connected</span>`
     : `<span class="badge disconnected">Disconnected</span>`;
@@ -521,6 +526,7 @@ async function doAdd() {
     body.altAddress = v('add-alt');
     body.charset  = v('add-charset');
     body.tls      = v('add-tls');
+    body.httpTimeout = v('add-timeout');
     body.privateKeyFile = v('add-keyfile');
   }
   if (S3_SVCS.has(svc)) {

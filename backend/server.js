@@ -1,5 +1,5 @@
 const express = require('express');
-const { exec, spawn } = require('child_process');
+const { exec, execFile, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -7,7 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 3030;
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../frontend')));
+app.use(express.static(path.join(__dirname, 'frontend')));
 
 // SSE clients for log streaming
 const sseClients = new Set();
@@ -19,13 +19,29 @@ function broadcast(data) {
 
 function runCli(args) {
   return new Promise((resolve) => {
+    const cliEnv = { ...process.env, COLUMNS: '320', LINES: '200', TERM: 'dumb', NO_COLOR: '1' };
+    if (Array.isArray(args)) {
+      const cmd = `raidrivecli ${args.map(a => JSON.stringify(a)).join(' ')}`;
+      execFile('raidrivecli', args, { timeout: 30000, env: cliEnv }, (err, stdout, stderr) => {
+        const output = (stdout + stderr).trim();
+        broadcast({ type: 'cmd', cmd, output, ok: !err });
+        resolve({ ok: !err, output, code: err?.code });
+      });
+      return;
+    }
+
     const cmd = `raidrivecli ${args}`;
-    exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
+    exec(cmd, { timeout: 30000, env: cliEnv }, (err, stdout, stderr) => {
       const output = (stdout + stderr).trim();
       broadcast({ type: 'cmd', cmd, output, ok: !err });
       resolve({ ok: !err, output, code: err?.code });
     });
   });
+}
+
+function pushOpt(args, name, value) {
+  if (value === undefined || value === null || value === '') return;
+  args.push(`${name}=${value}`);
 }
 
 // ── GET /api/status ─────────────────────────────────────────
@@ -52,15 +68,117 @@ app.get('/api/status', async (req, res) => {
 //   42c0037ff3b1429a9cbbc4956d821413   sftp    SFTP      Connected   /mnt/sfpt   sftp://192.168.200.40   user1   08/08/2024 16:45:42
 app.get('/api/list', async (req, res) => {
   const { connected, storage, sort } = req.query;
-  let args = 'list --long';
-  if (connected === 'true') args += ' --connected';
-  if (storage) args += ` --storage ${storage}`;
-  if (sort)    args += ` --sort ${sort}`;
+  const args = ['list'];
+  if (connected === 'true') args.push('--mounted');
+  if (storage) args.push('--storage', String(storage));
+  if (sort) args.push('--sort', String(sort));
 
   const result = await runCli(args);
-  const mounts = parseLongList(result.output);
+  const mounts = parseList(result.output);
   res.json({ ...result, mounts });
 });
+
+function normalizeState(state) {
+  if (!state) return '';
+  const s = String(state).trim();
+  if (/^mounted$/i.test(s)) return 'Connected';
+  if (/^(unmounted|disconnected)$/i.test(s)) return 'Disconnected';
+  if (/^connecting$/i.test(s)) return 'Connecting';
+  if (/^disconnecting$/i.test(s)) return 'Disconnecting';
+  return s;
+}
+
+function parseList(output) {
+  const lines = output.split('\n');
+  let headerIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const lower = lines[i].toLowerCase();
+    if (lower.includes('label') && lower.includes('state')) {
+      headerIdx = i;
+      break;
+    }
+  }
+  if (headerIdx === -1) return [];
+
+  const header = lines[headerIdx].toLowerCase();
+  const fields = [
+    { key: 'label', aliases: ['label'] },
+    { key: 'mountPath', aliases: ['mount path', 'local path'] },
+    { key: 'remote', aliases: ['remote address', 'remote'] },
+    { key: 'state', aliases: ['state'] },
+  ];
+
+  const positions = [];
+  for (const field of fields) {
+    let idx = -1;
+    for (const alias of field.aliases) {
+      idx = header.indexOf(alias);
+      if (idx !== -1) break;
+    }
+    if (idx !== -1) positions.push({ key: field.key, start: idx });
+  }
+  positions.sort((a, b) => a.start - b.start);
+  if (!positions.length) return [];
+
+  const dataLines = [];
+  let dataStart = headerIdx + 1;
+  while (dataStart < lines.length && /^[\s─\-]+$/.test(lines[dataStart])) dataStart++;
+  for (let i = dataStart; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim()) continue;
+    if (/^total\s+mountpoints\s*:/i.test(line.trim())) continue;
+    if (/^no\s+mountpoints?/i.test(line.trim())) continue;
+    dataLines.push(line);
+  }
+
+  const STATE_SET = new Set(['Connected', 'Disconnected', 'Connecting', 'Disconnecting', 'Mounted', 'Unmounted']);
+  const statePos = positions.find(p => p.key === 'state')?.start ?? 0;
+  const logicalRows = [];
+  let current = [];
+
+  for (const line of dataLines) {
+    const stateCell = line.slice(statePos, statePos + 24).trim();
+    const looksLikeRowStart = STATE_SET.has(stateCell) || (!current.length && /\S/.test(line));
+    if (looksLikeRowStart) {
+      if (current.length) logicalRows.push(current);
+      current = [line];
+    } else if (current.length) {
+      current.push(line);
+    }
+  }
+  if (current.length) logicalRows.push(current);
+
+  function mergePart(base, part, key) {
+    if (!part) return base;
+    if (!base) return part;
+    const noSpaceKeys = new Set(['mountPath', 'remote']);
+    if (noSpaceKeys.has(key)) return base + part;
+    if (/^[,./:-]/.test(part) || /[,./:-]$/.test(base)) return base + part;
+    return `${base} ${part}`;
+  }
+
+  const mounts = [];
+  for (const group of logicalRows) {
+    const entry = {};
+    for (let j = 0; j < positions.length; j++) {
+      const start = positions[j].start;
+      const end = j + 1 < positions.length ? positions[j + 1].start : undefined;
+      const key = positions[j].key;
+      let value = '';
+      for (const row of group) {
+        const part = (end ? row.slice(start, end) : row.slice(start)).trim();
+        value = mergePart(value, part, key);
+      }
+      entry[key] = value.trim();
+    }
+
+    if (!entry.label) continue;
+    entry.state = normalizeState(entry.state);
+    mounts.push(entry);
+  }
+
+  return mounts;
+}
 
 function parseLongList(output) {
   const lines = output.split('\n');
@@ -75,31 +193,114 @@ function parseLongList(output) {
   if (headerIdx === -1) return [];
 
   const header = lines[headerIdx];
-  // Compute column start positions from header
-  const cols = ['id', 'label', 'storage', 'state', 'local path', 'remote', 'user', 'created'];
+  // Compute column start positions from header.
+  // Newer raidrivecli uses "mount path / remote address / remote user".
+  const cols = [
+    { key: 'id', aliases: ['id'] },
+    { key: 'label', aliases: ['label'] },
+    { key: 'storage', aliases: ['storage'] },
+    { key: 'state', aliases: ['state'] },
+    { key: 'mountPath', aliases: ['mount path', 'local path'] },
+    { key: 'remote', aliases: ['remote address', 'remote'] },
+    { key: 'user', aliases: ['remote user', 'user'] },
+    { key: 'created', aliases: ['created'] },
+  ];
+
   const positions = [];
+  const lowerHeader = header.toLowerCase();
   for (const col of cols) {
-    const idx = header.toLowerCase().indexOf(col);
-    if (idx !== -1) positions.push({ col, start: idx });
+    let idx = -1;
+    for (const name of col.aliases) {
+      idx = lowerHeader.indexOf(name);
+      if (idx !== -1) break;
+    }
+    if (idx !== -1) positions.push({ key: col.key, start: idx });
   }
   positions.sort((a, b) => a.start - b.start);
 
   const mounts = [];
+  const STATE_SET = new Set(['Connected', 'Disconnected', 'Connecting', 'Disconnecting', 'Mounted', 'Unmounted']);
   // Data lines start after the separator line (────)
   let dataStart = headerIdx + 1;
   while (dataStart < lines.length && /^[\s─\-]+$/.test(lines[dataStart])) dataStart++;
 
+  const rowLines = [];
   for (let i = dataStart; i < lines.length; i++) {
     const line = lines[i];
     if (!line.trim()) continue;
+    if (/^total\s+mountpoints\s*:/i.test(line.trim())) continue;
+    if (/^no\s+mountpoints?/i.test(line.trim())) continue;
+    rowLines.push(line);
+  }
+
+  const idPos = positions.find(p => p.key === 'id')?.start ?? 0;
+  const statePos = positions.find(p => p.key === 'state')?.start ?? 0;
+  const logicalRows = [];
+  let current = [];
+
+  for (const line of rowLines) {
+    const idCell = line.slice(idPos, idPos + 40).trim();
+    const stateCell = line.slice(statePos, statePos + 24).trim();
+    const hasStateMarker = STATE_SET.has(stateCell);
+    const looksLikeRowStart = hasStateMarker || (!current.length && /^[0-9a-f]{6,}$/i.test(idCell));
+
+    if (looksLikeRowStart) {
+      if (current.length) {
+        logicalRows.push(current);
+      }
+      current = [line];
+    } else if (current.length) {
+      current.push(line);
+    }
+  }
+  if (current.length) logicalRows.push(current);
+
+  function mergePart(base, part, key) {
+    if (!part) return base;
+    if (!base) return part;
+    const noSpaceKeys = new Set(['id', 'mountPath', 'remote', 'created']);
+    if (noSpaceKeys.has(key)) return base + part;
+    if (/^[,./:-]/.test(part) || /[,./:-]$/.test(base)) return base + part;
+    return `${base} ${part}`;
+  }
+
+  for (const group of logicalRows) {
     const entry = {};
     for (let j = 0; j < positions.length; j++) {
       const start = positions[j].start;
-      const end   = j + 1 < positions.length ? positions[j + 1].start : undefined;
-      entry[positions[j].col] = (end ? line.slice(start, end) : line.slice(start)).trim();
+      const end = j + 1 < positions.length ? positions[j + 1].start : undefined;
+      const key = positions[j].key;
+      let value = '';
+
+      for (const rowLine of group) {
+        const part = (end ? rowLine.slice(start, end) : rowLine.slice(start)).trim();
+        value = mergePart(value, part, key);
+      }
+
+      entry[key] = value.trim();
     }
-    if (entry.label) mounts.push(entry);
+
+    // Normalize common wrapped datetime format: 06/27/202603:27:45 -> 06/27/2026 03:27:45
+    if (entry.created) {
+      entry.created = entry.created.replace(
+        /(\d{2}\/\d{2}\/\d{4})(\d{2}:\d{2}:\d{2})/,
+        '$1 $2'
+      );
+    }
+
+    if (!entry.label) continue;
+    if (entry.state && !STATE_SET.has(entry.state)) {
+      const m = entry.state.match(/Connected|Disconnected|Connecting|Disconnecting|Mounted|Unmounted/i);
+      if (m) {
+        entry.state = m[0];
+      } else {
+        continue;
+      }
+    }
+    entry.state = normalizeState(entry.state);
+    mounts.push(entry);
   }
+
   return mounts;
 }
 
@@ -131,7 +332,7 @@ app.post('/api/add', async (req, res) => {
     bandwidthDown, bandwidthUp,
     // Protocol services (sftp/ftp/webdav)
     address, username, password, privateKeyFile,
-    altAddress, charset, tls,
+    altAddress, charset, tls, httpTimeout,
     // S3-compatible services (s3/minio/aws/cloudflare/backblaze/...)
     bucket, endpoint, accessKeyId, secretAccessKey,
     region,
@@ -144,38 +345,40 @@ app.post('/api/add', async (req, res) => {
                        'alibaba', 'azure', 'gcp', 'ibm', 'idrive', 'wasabi', 'oracle',
                        'tencent', 'ncp', 'nhn', 'cloudian'];
 
-  let args = `add ${service}`;
+  const args = ['add', service];
 
   if (PROTOCOL_SERVICES.includes(service)) {
     // Pattern: raidrivecli add sftp sftp://user@host/path [options]
     if (!address) return res.status(400).json({ ok: false, output: 'address is required for ' + service });
-    args += ` ${address}`;
-    if (username)      args += ` -u "${username}"`;
-    if (password)      args += ` -p "${password}"`;
-    if (privateKeyFile) args += ` --private-key-file "${privateKeyFile}"`;
-    if (altAddress)    args += ` --alt-address "${altAddress}"`;
-    if (charset)       args += ` --charset ${charset}`;
-    if (tls)           args += ` --tls ${tls}`;
+    args.push(address);
+    pushOpt(args, '--username', username);
+    // Use --password=<value> to avoid raidrivecli treating @xxx as response file.
+    pushOpt(args, '--password', password);
+    pushOpt(args, '--private-key-file', privateKeyFile);
+    pushOpt(args, '--alt-address', altAddress);
+    pushOpt(args, '--charset', charset);
+    pushOpt(args, '--tls', tls);
+    pushOpt(args, '--http-timeout', httpTimeout);
     // FTP-specific
-    if (service === 'ftp' && req.body.transferPassive === false) args += ' --no-transfer-passive';
+    if (service === 'ftp' && req.body.transferPassive === false) args.push('--no-transfer-passive');
   } else if (S3_SERVICES.includes(service)) {
     // Pattern: raidrivecli add s3 --bucket <b> --endpoint <url> --access-key-id <k>
-    if (bucket)         args += ` --bucket "${bucket}"`;
-    if (endpoint)       args += ` --endpoint "${endpoint}"`;
-    if (accessKeyId)    args += ` --access-key-id "${accessKeyId}"`;
-    if (secretAccessKey) args += ` --secret-access-key "${secretAccessKey}"`;
-    if (region)         args += ` --region "${region}"`;
+    pushOpt(args, '--bucket', bucket);
+    pushOpt(args, '--endpoint', endpoint);
+    pushOpt(args, '--access-key-id', accessKeyId);
+    pushOpt(args, '--secret-access-key', secretAccessKey);
+    pushOpt(args, '--region', region);
   }
   // OAuth services (googledrive, onedrive, etc.) — just: raidrivecli add googledrive
   // Will trigger browser auth which may fail in headless Docker
 
   // Common options
-  if (label)         args += ` --label "${label}"`;
-  if (mountPath)     args += ` --mount-path "${mountPath}"`;
-  if (readOnly)      args += ' --read-only';
-  if (publicAccess)  args += ' --public';
-  if (bandwidthDown) args += ` --bandwidth-download ${bandwidthDown}`;
-  if (bandwidthUp)   args += ` --bandwidth-upload ${bandwidthUp}`;
+  pushOpt(args, '--label', label);
+  pushOpt(args, '--mount-path', mountPath);
+  if (readOnly) args.push('--read-only');
+  if (publicAccess) args.push('--public');
+  pushOpt(args, '--bandwidth-download', bandwidthDown);
+  pushOpt(args, '--bandwidth-upload', bandwidthUp);
 
   const result = await runCli(args);
   res.json(result);
@@ -185,21 +388,46 @@ app.post('/api/add', async (req, res) => {
 app.post('/api/mount', async (req, res) => {
   const { label } = req.body;
   if (!label) return res.status(400).json({ ok: false, output: 'label is required' });
-  res.json(await runCli(`mount "${label}"`));
+  res.json(await runCli(['mount', label]));
 });
 
 // ── POST /api/unmount ────────────────────────────────────
 app.post('/api/unmount', async (req, res) => {
   const { label } = req.body;
   if (!label) return res.status(400).json({ ok: false, output: 'label is required' });
-  res.json(await runCli(`unmount "${label}"`));
+  res.json(await runCli(['unmount', label, '-y']));
 });
 
 // ── DELETE /api/remove ───────────────────────────────────
 app.delete('/api/remove', async (req, res) => {
   const { label } = req.body;
   if (!label) return res.status(400).json({ ok: false, output: 'label is required' });
-  res.json(await runCli(`remove "${label}"`));
+
+  // Try direct remove first. If it fails because mounted/in-use, unmount then retry.
+  let result = await runCli(['remove', label, '-y']);
+  if (!result.ok) {
+    const out = (result.output || '').toLowerCase();
+    if (/mounted|in use|busy|disconnect|unmount/.test(out)) {
+      const unmountResult = await runCli(['unmount', label, '-y']);
+      const removeRetry = await runCli(['remove', label, '-y']);
+      result = {
+        ok: removeRetry.ok,
+        code: removeRetry.code,
+        output: [
+          '[remove] first attempt failed',
+          result.output || '',
+          '',
+          '[unmount] auto unmount result',
+          unmountResult.output || '',
+          '',
+          '[remove] retry result',
+          removeRetry.output || '',
+        ].join('\n').trim(),
+      };
+    }
+  }
+
+  res.json(result);
 });
 
 // ── POST /api/signin / signout ───────────────────────────

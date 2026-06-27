@@ -1,37 +1,33 @@
-version: "3.9"
-
 services:
   raidrive-panel:
-    build:
-      context: .
-      args:
-        ARCH: amd64   # change to arm64 for ARM hosts (e.g. Orange Pi 5 Plus / RK3588)
+    image: leesonaa/raidrive-panel:latest
     container_name: raidrive-panel
+    labels:
+      net.unraid.docker.icon: "https://docs.raidrive.com/en/cli/images/RaiDrive.png"
+      net.unraid.docker.webui: "http://[IP]:[PORT:3030]"
+
     restart: unless-stopped
+    network_mode: bridge
 
     ports:
-      - "3030:3030"
+      - "${PANEL_PORT:-3030}:3030"
 
     # Required for FUSE filesystem inside the container
     devices:
-      - /dev/fuse
+      - /dev/fuse:/dev/fuse
     cap_add:
       - SYS_ADMIN
     security_opt:
       - apparmor:unconfined
 
-    # Persist RaiDrive config & cache across restarts
+    # Unraid-friendly persistent paths under /mnt/user/appdata
     volumes:
-      - raidrive-config:/etc/raidrive
-      - raidrive-cache:/var/cache/raidrive
-      - raidrive-logs:/var/log/raidrive
-      # Optional: expose mounted filesystems to the host
-      # - /mnt/raidrive:/mnt:shared
+      - /mnt/user/appdata/raidrive-panel/config:/etc/raidrive
+      - /mnt/user/appdata/raidrive-panel/cache:/var/cache/raidrive
+      - /mnt/user/appdata/raidrive-panel/logs:/var/log/raidrive
+      # Optional: expose mounted filesystems to host/share
+      # - /mnt/user/raidrive:/mnt:shared
 
     environment:
+      - TZ=${TZ:-Asia/Shanghai}
       - PORT=3030
-
-volumes:
-  raidrive-config:
-  raidrive-cache:
-  raidrive-logs:
