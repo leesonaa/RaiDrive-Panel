@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RaiDrive Panel</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#21262d;
+    --accent:#58a6ff; --accent2:#3fb950; --warn:#f85149;
+    --muted:#8b949e; --text:#e6edf3; --tag:#1f2937;
+    --mono:'JetBrains Mono','Fira Code',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;min-height:100vh}
+  .shell{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+
+  /* Sidebar */
+  .sidebar{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+  .logo{padding:20px 18px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+  .logo-icon{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#1f6feb,#388bfd);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .logo-icon svg{fill:white}
+  .logo-name{font-size:14px;font-weight:700}
+  .logo-ver{font-size:10px;color:var(--muted);font-family:var(--mono)}
+  nav{flex:1;padding:12px 8px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;margin-bottom:2px;font-size:13px;cursor:pointer;color:var(--muted);border:none;background:none;width:100%;text-align:left;transition:.15s}
+  .nav-item:hover{background:var(--border);color:var(--text)}
+  .nav-item.active{background:rgba(88,166,255,.15);color:var(--accent)}
+  .nav-item svg{width:16px;height:16px;flex-shrink:0}
+  .sidebar-footer{padding:12px 8px;border-top:1px solid var(--border)}
+  .daemon-pill{display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12px;color:var(--muted);background:var(--tag);border-radius:6px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:.3s}
+  .dot.green{background:var(--accent2);box-shadow:0 0 6px var(--accent2)}
+  .dot.red{background:var(--warn)}
+
+  /* Main */
+  main{padding:28px 32px;overflow-y:auto}
+  .page{display:none}.page.active{display:block}
+  .page-header{margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-start}
+  .page-header h1{font-size:20px;font-weight:700;margin-bottom:4px}
+  .page-header p{font-size:13px;color:var(--muted)}
+
+  /* Stat cards */
+  .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px}
+  .stat-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}
+  .stat-value{font-size:24px;font-weight:700;font-family:var(--mono)}
+  .stat-value.blue{color:var(--accent)}.stat-value.green{color:var(--accent2)}.stat-value.red{color:var(--warn)}.stat-value.muted{color:var(--muted)}
+
+  /* Mount cards */
+  .mount-list{display:flex;flex-direction:column;gap:8px}
+  .mount-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;transition:.15s}
+  .mount-card:hover{border-color:rgba(88,166,255,.4)}
+  .mount-icon{width:38px;height:38px;border-radius:8px;background:var(--tag);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+  .mount-info{flex:1;min-width:0}
+  .mount-label{font-size:13px;font-weight:600;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mount-remote{font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mount-meta{font-size:11px;color:var(--muted)}
+  .badge{font-size:11px;font-family:var(--mono);padding:3px 7px;border-radius:4px;font-weight:600;flex-shrink:0}
+  .badge.connected{background:rgba(63,185,80,.15);color:var(--accent2)}
+  .badge.disconnected{background:rgba(248,81,73,.12);color:var(--warn)}
+  .badge.svc{background:var(--tag);color:var(--muted)}
+  .mount-actions{display:flex;gap:5px;flex-shrink:0}
+
+  /* Buttons */
+  .btn{padding:7px 13px;border-radius:6px;font-size:13px;font-weight:600;border:1px solid transparent;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:5px}
+  .btn-primary{background:var(--accent);color:#0d1117;border-color:var(--accent)}.btn-primary:hover{background:#79c0ff}
+  .btn-success{background:transparent;color:var(--accent2);border-color:var(--accent2)}.btn-success:hover{background:rgba(63,185,80,.1)}
+  .btn-danger{background:transparent;color:var(--warn);border-color:var(--warn)}.btn-danger:hover{background:rgba(248,81,73,.1)}
+  .btn-ghost{background:transparent;color:var(--muted);border-color:var(--border)}.btn-ghost:hover{background:var(--border);color:var(--text)}
+  .btn-sm{padding:5px 9px;font-size:12px}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+
+  /* Forms */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px}
+  .form-group{margin-bottom:14px}
+  .form-group label,.field-label{font-size:11px;color:var(--muted);margin-bottom:5px;display:block;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  input,select,textarea{width:100%;padding:8px 11px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;outline:none;transition:.15s;font-family:inherit}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+  select option{background:var(--surface)}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .form-row.three{grid-template-columns:1fr 1fr 1fr}
+  .form-check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer}
+  .form-check input{width:auto}
+  .checks-row{display:flex;gap:20px;margin-bottom:14px}
+
+  /* Section */
+  .section-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;margin-top:4px}
+  .divider{height:1px;background:var(--border);margin:18px 0}
+  .service-group{display:none}.service-group.active{display:block}
+
+  /* Terminal */
+  .terminal{background:#010409;border:1px solid var(--border);border-radius:8px;padding:13px 15px;font-family:var(--mono);font-size:12px;color:#7ee787;min-height:60px;max-height:280px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+  .terminal .err{color:var(--warn)}.terminal .info{color:var(--accent)}
+
+  /* Show detail table */
+  .detail-section{margin-bottom:14px}
+  .detail-section-title{font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)}
+  .detail-row{display:flex;gap:12px;padding:5px 0;border-bottom:1px solid rgba(33,38,45,.6);font-size:12px}
+  .detail-key{flex:0 0 220px;color:var(--muted);font-family:var(--mono)}
+  .detail-flag{flex:0 0 160px;color:rgba(88,166,255,.6);font-family:var(--mono);font-size:11px}
+  .detail-val{flex:1;color:var(--text);font-family:var(--mono);word-break:break-all}
+  .detail-val.masked{color:var(--muted)}
+
+  /* Log */
+  .log-stream{background:#010409;border:1px solid var(--border);border-radius:8px;padding:13px 15px;font-family:var(--mono);font-size:11px;color:#7ee787;height:420px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+  .log-line{margin-bottom:2px;line-height:1.5}
+  .log-line.cmd{color:var(--accent)}.log-line.err-line{color:var(--warn)}.log-line.dim{color:var(--muted)}
+
+  /* Toast */
+  #toasts{position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;gap:8px;z-index:999}
+  .toast{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:11px 15px;font-size:13px;max-width:360px;animation:toastIn .2s ease;box-shadow:0 8px 32px rgba(0,0,0,.4)}
+  .toast.ok{border-left:3px solid var(--accent2)}.toast.err{border-left:3px solid var(--warn)}
+  @keyframes toastIn{from{transform:translateX(30px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+  /* Misc */
+  .empty{text-align:center;padding:40px 24px;color:var(--muted);font-size:14px}
+  .empty .emo{font-size:36px;margin-bottom:10px}
+  .spinner{display:inline-block;width:13px;height:13px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media(max-width:768px){.shell{grid-template-columns:1fr}.sidebar{height:auto;position:static}.stats-row{grid-template-columns:1fr 1fr}.form-row,.form-row.three{grid-template-columns:1fr}main{padding:16px}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-icon"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M20 6H4L2 12v2h1v6h2v-6h14v6h2v-6h1v-2l-2-6zM4 12l1.5-4h13L20 12H4z"/></svg></div>
+      <div><div class="logo-name">RaiDrive Panel</div><div class="logo-ver">raidrivecli</div></div>
+    </div>
+    <nav>
+      <button class="nav-item active" data-page="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>概览
+      </button>
+      <button class="nav-item" data-page="mounts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12H2M5 12L2 9m0 6l3-3M19 12l3-3m0 6l-3-3"/></svg>挂载点
+      </button>
+      <button class="nav-item" data-page="add">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>添加存储
+      </button>
+      <button class="nav-item" data-page="logs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>日志
+      </button>
+      <button class="nav-item" data-page="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>设置
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="daemon-pill"><div class="dot" id="ddot"></div><span id="dtext">检查中...</span></div>
+    </div>
+  </aside>
+
+  <main>
+    <!-- Dashboard -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header"><div><h1>概览</h1><p>RaiDrive CLI 挂载点状态总览</p></div><button class="btn btn-ghost btn-sm" onclick="initDash()">刷新</button></div>
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-label">总挂载点</div><div class="stat-value blue" id="s-total">—</div></div>
+        <div class="stat-card"><div class="stat-label">Connected</div><div class="stat-value green" id="s-conn">—</div></div>
+        <div class="stat-card"><div class="stat-label">Disconnected</div><div class="stat-value red" id="s-disc">—</div></div>
+        <div class="stat-card"><div class="stat-label">版本</div><div class="stat-value muted" id="s-ver" style="font-size:14px;padding-top:4px">—</div></div>
+      </div>
+      <div class="section-title">守护进程状态</div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="terminal" id="status-out">获取中...</div>
+      </div>
+      <div class="section-title">挂载点快览</div>
+      <div class="mount-list" id="dash-mounts"><div class="empty"><div class="emo">⏳</div>加载中...</div></div>
+    </div>
+
+    <!-- Mounts -->
+    <div class="page" id="page-mounts">
+      <div class="page-header">
+        <div><h1>挂载点管理</h1><p>Connected = 已挂载，Disconnected = 未挂载</p></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="filter-storage" onchange="fetchMounts()" style="width:140px;padding:6px 10px;font-size:12px">
+            <option value="">全部类型</option>
+            <option value="sftp">SFTP</option><option value="ftp">FTP</option><option value="webdav">WebDAV</option>
+            <option value="googledrive">Google Drive</option><option value="onedrive">OneDrive</option>
+            <option value="s3">S3 Compatible</option><option value="minio">MinIO</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="fetchMounts()">刷新</button>
+        </div>
+      </div>
+      <div class="mount-list" id="mounts-list"><div class="empty"><div class="emo">⏳</div>加载中...</div></div>
+      <!-- Detail panel -->
+      <div id="detail-panel" style="display:none;margin-top:20px">
+        <div class="section-title">挂载点详情 — <span id="detail-label" style="color:var(--accent)"></span></div>
+        <div class="card" id="detail-body"></div>
+      </div>
+    </div>
+
+    <!-- Add -->
+    <div class="page" id="page-add">
+      <div class="page-header"><div><h1>添加存储</h1><p>根据存储类型填写对应参数</p></div></div>
+
+      <div class="card">
+        <div class="form-group">
+          <label>存储类型</label>
+          <select id="add-service" onchange="onSvcChange()">
+            <optgroup label="协议 (无需浏览器授权)">
+              <option value="webdav">WebDAV</option>
+              <option value="sftp">SFTP</option>
+              <option value="ftp">FTP / FTPS</option>
+            </optgroup>
+            <optgroup label="企业 / S3 兼容 (AK/SK 认证)">
+              <option value="s3">AWS S3 Compatible</option>
+              <option value="minio">MinIO</option>
+              <option value="aws">AWS S3</option>
+              <option value="cloudflare">Cloudflare R2</option>
+              <option value="backblaze">Backblaze B2</option>
+              <option value="digitalocean">DigitalOcean Spaces</option>
+              <option value="wasabi">Wasabi</option>
+            </optgroup>
+            <optgroup label="个人云 (需浏览器 OAuth — 容器内可能受限)">
+              <option value="googledrive">Google Drive</option>
+              <option value="onedrive">OneDrive</option>
+              <option value="dropbox">Dropbox</option>
+              <option value="mega">MEGA</option>
+              <option value="pcloud">pCloud</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <!-- Protocol group -->
+        <div class="service-group" id="grp-protocol">
+          <div class="form-group">
+            <label>服务器地址 <span style="color:var(--muted);font-weight:400;text-transform:none">(完整 URL)</span></label>
+            <input id="add-address" placeholder="例：sftp://user@192.168.1.1:22/data  或  https://dav.example.com/remote.php/dav">
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>用户名 (-u)</label><input id="add-username" placeholder="留空则交互式输入"></div>
+            <div class="form-group"><label>密码 (-p)</label><input id="add-password" type="password" placeholder="留空则交互式输入"></div>
+          </div>
+          <!-- SFTP-specific -->
+          <div id="sftp-extra" style="display:none">
+            <div class="form-group"><label>私钥文件路径 (--private-key-file)</label><input id="add-keyfile" placeholder="/root/.ssh/id_rsa"></div>
+          </div>
+          <!-- WebDAV/FTP extra -->
+          <div id="webdav-extra" style="display:none">
+            <div class="form-row">
+              <div class="form-group"><label>TLS 版本 (--tls)</label>
+                <select id="add-tls"><option value="">默认</option><option>tls12</option><option>tls13</option><option>tls11</option><option>ssl30</option></select>
+              </div>
+              <div class="form-group"><label>连接超时秒数 (--http-timeout)</label><input id="add-timeout" type="number" placeholder="100"></div>
+            </div>
+          </div>
+          <div class="form-group"><label>备用地址 (--alt-address)</label><input id="add-alt" placeholder="可选"></div>
+          <div class="form-group">
+            <label>字符集 (--charset)</label>
+            <select id="add-charset"><option value="">默认 utf-8</option><option>utf-8</option><option>gbk</option><option>gb2312</option><option>big5</option></select>
+          </div>
+        </div>
+
+        <!-- S3 group -->
+        <div class="service-group" id="grp-s3">
+          <div class="form-row">
+            <div class="form-group"><label>Bucket (--bucket)</label><input id="add-bucket" placeholder="my-bucket"></div>
+            <div class="form-group"><label>Endpoint (--endpoint)</label><input id="add-endpoint" placeholder="https://s3.us-east-1.amazonaws.com"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>Access Key ID (--access-key-id)</label><input id="add-akid" placeholder="AKIAIOSFODNN7EXAMPLE"></div>
+            <div class="form-group"><label>Secret Access Key (--secret-access-key)</label><input id="add-sak" type="password" placeholder="留空则交互式输入"></div>
+          </div>
+          <div class="form-group"><label>Region (--region，部分服务需要)</label><input id="add-region" placeholder="us-east-1（可选）"></div>
+        </div>
+
+        <!-- OAuth notice -->
+        <div class="service-group" id="grp-oauth">
+          <div class="terminal" style="color:var(--warn);margin-bottom:4px">
+⚠️  此类存储需要浏览器 OAuth 授权。
+在无头 Docker 容器中通常无法完成授权流程。
+
+推荐做法：
+  1. 在宿主机安装 raidrivecli，运行 raidrivecli add googledrive 完成授权
+  2. 将 /etc/raidrive/main.dat 复制到容器的 raidrive-config volume 中
+  3. 重启容器后配置会自动恢复
+
+如果你仍要尝试（需要 --display 或 X11），点击下方按钮。</div>
+        </div>
+
+        <div class="divider"></div>
+        <div class="section-title">通用选项</div>
+        <div class="form-row">
+          <div class="form-group"><label>标签 (--label)</label><input id="add-label" placeholder="自动生成（留空）"></div>
+          <div class="form-group"><label>挂载路径 (--mount-path)</label><input id="add-mountpath" placeholder="/mnt/mycloud"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>下载限速 MB/s (--bandwidth-download)</label><input id="add-bwdown" type="number" placeholder="不限速"></div>
+          <div class="form-group"><label>上传限速 MB/s (--bandwidth-upload)</label><input id="add-bwup" type="number" placeholder="不限速"></div>
+        </div>
+        <div class="checks-row">
+          <label class="form-check"><input type="checkbox" id="add-readonly"> 只读 (--read-only)</label>
+          <label class="form-check"><input type="checkbox" id="add-public"> 公开访问 (--public)</label>
+        </div>
+
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" id="btn-add" onclick="doAdd()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            添加并挂载
+          </button>
+        </div>
+      </div>
+
+      <div id="add-result" style="display:none">
+        <div class="section-title">执行结果</div>
+        <div class="terminal" id="add-out"></div>
+      </div>
+    </div>
+
+    <!-- Logs -->
+    <div class="page" id="page-logs">
+      <div class="page-header">
+        <div><h1>实时日志</h1><p>命令执行记录 + 守护进程日志流</p></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" onclick="clearLog()">清空</button>
+          <button class="btn btn-ghost btn-sm" onclick="loadDaemonLog()">读取守护日志</button>
+        </div>
+      </div>
+      <div class="log-stream" id="logbox"><div class="log-line dim">等待日志...</div></div>
+    </div>
+
+    <!-- Settings -->
+    <div class="page" id="page-settings">
+      <div class="page-header"><div><h1>设置</h1><p>账号 / 订阅</p></div></div>
+      <div class="card">
+        <div class="section-title">RaiDrive 账号</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px">登录账号后可使用限速、公开挂载、文件锁等订阅功能。</p>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="doSignin()">signin</button>
+          <button class="btn btn-ghost"   onclick="doSignout()">signout</button>
+        </div>
+        <div id="signin-out" style="margin-top:12px;display:none"><div class="terminal" id="signin-terminal"></div></div>
+      </div>
+      <div class="card">
+        <div class="section-title">关于</div>
+        <div style="font-size:13px;color:var(--muted);line-height:2">
+          RaiDrive Panel — Node.js + Express + 原生 HTML/CSS<br>
+          封装 <code style="font-family:var(--mono);color:var(--accent)">raidrivecli</code> 全部命令，含真实 <code style="font-family:var(--mono)">--long</code> 输出解析<br>
+          <a href="https://docs.raidrive.com/en/cli/" target="_blank" style="color:var(--accent)">📖 官方文档</a>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<div id="toasts"></div>
+
+<script>
+// ── Service classification ────────────────────────────────────
+const S3_SVCS     = new Set(['s3','minio','aws','cloudflare','backblaze','digitalocean','wasabi','alibaba','azure','gcp','ibm','idrive','oracle','tencent','ncp','nhn','cloudian']);
+const PROTO_SVCS  = new Set(['sftp','ftp','webdav']);
+const OAUTH_SVCS  = new Set(['googledrive','onedrive','dropbox','mega','pcloud','yandex','mailru','googlephotos','googleworkspace','onedrivebusiness','sharepoint','box','dropboxbusiness']);
+
+const ICONS = {
+  googledrive:'🟡',onedrive:'🔵',dropbox:'🔷',mega:'🔴',pcloud:'🟢',yandex:'🟠',mailru:'✉️',googlephotos:'📷',
+  googleworkspace:'🏢',onedrivebusiness:'💼',sharepoint:'📋',dropboxbusiness:'📦',box:'📫',
+  aws:'🟨',s3:'☁️',azure:'🔷',gcp:'🌐',cloudflare:'🟠',backblaze:'🅱️',minio:'🟣',wasabi:'💧',digitalocean:'🌊',
+  sftp:'🔒',ftp:'📡',webdav:'🔗',
+};
+
+// ── Navigation ────────────────────────────────────────────────
+document.querySelectorAll('.nav-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    const page = btn.dataset.page;
+    document.getElementById('page-' + page).classList.add('active');
+    if (page === 'dashboard') initDash();
+    if (page === 'mounts')    fetchMounts();
+  });
+});
+
+// ── API ───────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const r = await fetch('/api' + path, {
+    method, headers: {'Content-Type':'application/json'},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return r.json();
+}
+
+// ── Dashboard ─────────────────────────────────────────────────
+async function initDash() {
+  // Status
+  const st = await api('GET', '/status');
+  document.getElementById('status-out').textContent = st.output || '(无输出)';
+  const dot  = document.getElementById('ddot');
+  const dtxt = document.getElementById('dtext');
+  if (st.ok) { dot.className='dot green'; dtxt.textContent='守护进程运行中'; }
+  else        { dot.className='dot red';   dtxt.textContent='守护进程异常';   }
+  if (st.parsed) {
+    document.getElementById('s-ver').textContent = st.parsed['Version'] || '—';
+  }
+  // List
+  const ls = await api('GET', '/list');
+  const m = ls.mounts || [];
+  document.getElementById('s-total').textContent = m.length;
+  const conn = m.filter(x => x.state === 'Connected').length;
+  document.getElementById('s-conn').textContent  = conn;
+  document.getElementById('s-disc').textContent  = m.length - conn;
+  renderMountList('dash-mounts', m, false);
+}
+
+// ── Mounts page ───────────────────────────────────────────────
+async function fetchMounts() {
+  const storage = document.getElementById('filter-storage')?.value;
+  const url = '/list' + (storage ? `?storage=${storage}` : '');
+  const ls = await api('GET', url);
+  renderMountList('mounts-list', ls.mounts || [], true);
+  document.getElementById('detail-panel').style.display = 'none';
+}
+
+function renderMountList(targetId, mounts, showDetail) {
+  const el = document.getElementById(targetId);
+  if (!mounts.length) {
+    el.innerHTML = '<div class="empty"><div class="emo">📭</div>暂无挂载点</div>';
+    return;
+  }
+  el.innerHTML = mounts.map(m => mountCardHTML(m, showDetail)).join('');
+}
+
+function mountCardHTML(m, showDetail) {
+  const svc     = (m.storage || '').toLowerCase();
+  const icon    = ICONS[svc] || '💾';
+  const isConn  = m.state === 'Connected';
+  const badge   = isConn
+    ? `<span class="badge connected">Connected</span>`
+    : `<span class="badge disconnected">Disconnected</span>`;
+  const svcBadge = m.storage ? `<span class="badge svc">${esc(m.storage)}</span>` : '';
+  const mountBtn = isConn
+    ? `<button class="btn btn-danger btn-sm" onclick="doUnmount('${esc(m.label)}')">卸载</button>`
+    : `<button class="btn btn-success btn-sm" onclick="doMount('${esc(m.label)}')">挂载</button>`;
+  const moreBtn = showDetail
+    ? `<button class="btn btn-ghost btn-sm" onclick="doShow('${esc(m.label)}')">详情</button>
+       <button class="btn btn-danger btn-sm" onclick="doRemove('${esc(m.label)}')">删除</button>`
+    : '';
+  return `<div class="mount-card">
+    <div class="mount-icon">${icon}</div>
+    <div class="mount-info">
+      <div class="mount-label">${esc(m.label)}</div>
+      <div class="mount-remote">${esc(m.remote || m['local path'] || '')}</div>
+      ${m.user ? `<div class="mount-meta">user: ${esc(m.user)}  ·  ${esc(m.created || '')}</div>` : ''}
+    </div>
+    ${svcBadge}${badge}
+    <div class="mount-actions">${mountBtn}${moreBtn}</div>
+  </div>`;
+}
+
+async function doMount(label) {
+  toast(`挂载 ${label}...`);
+  const r = await api('POST', '/mount', {label});
+  toast(r.ok ? `✅ ${label} 已挂载` : `❌ ${r.output}`, !r.ok);
+  fetchMounts();
+}
+async function doUnmount(label) {
+  toast(`卸载 ${label}...`);
+  const r = await api('POST', '/unmount', {label});
+  toast(r.ok ? `✅ ${label} 已卸载` : `❌ ${r.output}`, !r.ok);
+  fetchMounts();
+}
+async function doRemove(label) {
+  if (!confirm(`确认删除 "${label}"？`)) return;
+  const r = await api('DELETE', '/remove', {label});
+  toast(r.ok ? `🗑️ ${label} 已删除` : `❌ ${r.output}`, !r.ok);
+  fetchMounts();
+}
+async function doShow(label) {
+  const r = await api('GET', `/show/${encodeURIComponent(label)}`);
+  const panel = document.getElementById('detail-panel');
+  document.getElementById('detail-label').textContent = label;
+  const body = document.getElementById('detail-body');
+  if (!r.ok || !r.sections || !Object.keys(r.sections).length) {
+    body.innerHTML = `<div class="terminal">${esc(r.output)}</div>`;
+  } else {
+    body.innerHTML = Object.entries(r.sections).map(([sec, rows]) => `
+      <div class="detail-section">
+        <div class="detail-section-title">${esc(sec)}</div>
+        ${Object.entries(rows).map(([k, v]) => `
+          <div class="detail-row">
+            <div class="detail-key">${esc(k)}</div>
+            <div class="detail-flag">${esc(v.flag)}</div>
+            <div class="detail-val ${v.value.includes('***') ? 'masked' : ''}">${esc(v.value || '—')}</div>
+          </div>`).join('')}
+      </div>`).join('');
+  }
+  panel.style.display = 'block';
+  panel.scrollIntoView({behavior:'smooth'});
+}
+
+// ── Add form ──────────────────────────────────────────────────
+function onSvcChange() {
+  const svc = document.getElementById('add-service').value;
+  document.querySelectorAll('.service-group').forEach(g => g.classList.remove('active'));
+  if (PROTO_SVCS.has(svc))  document.getElementById('grp-protocol').classList.add('active');
+  if (S3_SVCS.has(svc))     document.getElementById('grp-s3').classList.add('active');
+  if (OAUTH_SVCS.has(svc))  document.getElementById('grp-oauth').classList.add('active');
+  // SFTP-specific extras
+  document.getElementById('sftp-extra').style.display   = svc === 'sftp' ? 'block' : 'none';
+  document.getElementById('webdav-extra').style.display = (svc === 'webdav' || svc === 'ftp') ? 'block' : 'none';
+}
+
+async function doAdd() {
+  const btn = document.getElementById('btn-add');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> 添加中...';
+  const svc = document.getElementById('add-service').value;
+
+  const body = {
+    service:       svc,
+    label:         v('add-label'),
+    mountPath:     v('add-mountpath'),
+    readOnly:      document.getElementById('add-readonly').checked,
+    publicAccess:  document.getElementById('add-public').checked,
+    bandwidthDown: v('add-bwdown') || null,
+    bandwidthUp:   v('add-bwup')   || null,
+  };
+  if (PROTO_SVCS.has(svc)) {
+    body.address  = v('add-address');
+    body.username = v('add-username');
+    body.password = v('add-password');
+    body.altAddress = v('add-alt');
+    body.charset  = v('add-charset');
+    body.tls      = v('add-tls');
+    body.privateKeyFile = v('add-keyfile');
+  }
+  if (S3_SVCS.has(svc)) {
+    body.bucket          = v('add-bucket');
+    body.endpoint        = v('add-endpoint');
+    body.accessKeyId     = v('add-akid');
+    body.secretAccessKey = v('add-sak');
+    body.region          = v('add-region');
+  }
+
+  const r = await api('POST', '/add', body);
+  document.getElementById('add-result').style.display = 'block';
+  const out = document.getElementById('add-out');
+  out.textContent = r.output || '(无输出)';
+  out.className   = 'terminal' + (r.ok ? '' : '');
+  toast(r.ok ? '✅ 存储添加成功' : '❌ 添加失败，查看结果', !r.ok);
+  btn.disabled = false;
+  btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg> 添加并挂载';
+}
+
+function v(id) { return document.getElementById(id)?.value?.trim() || ''; }
+
+// ── Signin ────────────────────────────────────────────────────
+async function doSignin() {
+  const r = await api('POST', '/signin');
+  document.getElementById('signin-terminal').textContent = r.output;
+  document.getElementById('signin-out').style.display = 'block';
+  toast(r.ok ? '✅ 已发起登录' : '⚠️ ' + r.output, !r.ok);
+}
+async function doSignout() {
+  const r = await api('POST', '/signout');
+  document.getElementById('signin-terminal').textContent = r.output;
+  document.getElementById('signin-out').style.display = 'block';
+  toast(r.ok ? '✅ 已退出' : '⚠️ ' + r.output, !r.ok);
+}
+
+// ── Logs ──────────────────────────────────────────────────────
+const logbox = document.getElementById('logbox');
+function appendLog(cls, txt) {
+  const d = document.createElement('div');
+  d.className = 'log-line ' + cls;
+  d.textContent = `[${new Date().toLocaleTimeString()}] ${txt}`;
+  logbox.appendChild(d);
+  logbox.scrollTop = logbox.scrollHeight;
+}
+function clearLog() { logbox.innerHTML = ''; appendLog('dim','日志已清空'); }
+async function loadDaemonLog() {
+  const r = await api('GET', '/daemon-logs');
+  appendLog('cmd','──── Daemon Log ────');
+  r.output.split('\n').forEach(l => appendLog('', l));
+}
+const es = new EventSource('/api/logs');
+es.onmessage = e => {
+  const d = JSON.parse(e.data);
+  if (d.type === 'cmd') appendLog(d.ok ? 'cmd' : 'err-line', `$ ${d.cmd}\n${d.output}`);
+  if (d.type === 'log') appendLog('', d.msg);
+};
+
+// ── Toast ─────────────────────────────────────────────────────
+function toast(msg, isErr=false) {
+  const c = document.getElementById('toasts');
+  const t = document.createElement('div');
+  t.className = 'toast ' + (isErr ? 'err' : 'ok');
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ── Init ──────────────────────────────────────────────────────
+onSvcChange();
+initDash();
+</script>
+</body>
+</html>

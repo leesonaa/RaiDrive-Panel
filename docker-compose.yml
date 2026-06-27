@@ -1,0 +1,37 @@
+version: "3.9"
+
+services:
+  raidrive-panel:
+    build:
+      context: .
+      args:
+        ARCH: amd64   # change to arm64 for ARM hosts (e.g. Orange Pi 5 Plus / RK3588)
+    container_name: raidrive-panel
+    restart: unless-stopped
+
+    ports:
+      - "3030:3030"
+
+    # Required for FUSE filesystem inside the container
+    devices:
+      - /dev/fuse
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+
+    # Persist RaiDrive config & cache across restarts
+    volumes:
+      - raidrive-config:/etc/raidrive
+      - raidrive-cache:/var/cache/raidrive
+      - raidrive-logs:/var/log/raidrive
+      # Optional: expose mounted filesystems to the host
+      # - /mnt/raidrive:/mnt:shared
+
+    environment:
+      - PORT=3030
+
+volumes:
+  raidrive-config:
+  raidrive-cache:
+  raidrive-logs:
