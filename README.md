@@ -12,7 +12,9 @@ raidrive-panel/
 ├── backend/
 │   ├── package.json
 │   ├── server.js        # Express API，封装 raidrivecli 命令
-│   ├── sync.js          # 文件同步引擎（rsync + 双向快照 + cron）
+│   ├── fs-api.js        # 文件管理 API（浏览/复制/移动/删除，rsync 传输）
+│   ├── sync.js          # 任务式同步引擎（rsync + 双向快照 + cron）
+│   ├── rsync-run.js     # rsync 进程与进度解析
 │   └── test/            # node --test，需要本机有 rsync
 └── frontend/
     └── index.html       # 单页管理界面
@@ -73,7 +75,22 @@ Google Drive、OneDrive、Dropbox 等需要浏览器 OAuth 授权，在无头容
 - `raidrive-cache`  → `/var/cache/raidrive/`
 - `raidrive-logs`   → `/var/log/raidrive/`
 
-## 文件同步
+## 文件管理（双栏拖动传输）
+
+左栏「本地」是容器内的目录，右栏「挂载点」是 RaiDrive 挂载路径（两栏都可以跳到任意允许的位置）。
+
+- 把文件/文件夹从一栏**拖到另一栏**即复制；拖到某个文件夹行上则进入该文件夹
+- 工具栏「拖动时：复制 / 移动」切换默认行为，**按住 Shift** 临时反转
+- 支持多选（Ctrl/⌘ 点击、Shift 范围、Ctrl+A）、双击进入、后退/前进/上一级、排序、过滤、收藏目录
+- 目标已有同名项时弹出选择：跳过 / 保留两者（自动重命名）/ 覆盖；不会用文件替换同名文件夹
+- 底部显示传输进度，可取消；Delete 删除、F2 重命名
+- 「⇄ 同步这两个目录」会用当前两栏目录预填一个任务式同步（见下）
+
+可浏览范围由环境变量 `FS_ROOTS`（冒号分隔，默认 `/mnt:/data:/media`）加上所有 RaiDrive 挂载路径决定，符号链接不能指向范围之外。未 Connected 的挂载点拒绝浏览和写入，避免把文件写进掉线后的空目录。
+
+**安全**：这个面板能读写删除容器内文件，请设置 `PANEL_USER` 和 `PANEL_PASSWORD` 开启 HTTP Basic 认证（两个都设才生效），不要把 3030 端口暴露到公网。
+
+## 任务式同步
 
 raidrivecli 本身没有同步命令，面板在挂载路径与本地目录之间用 rsync 做同步。
 本地目录需要先通过 volume 映射进容器（见 `docker-compose.yml`）。
@@ -115,3 +132,11 @@ raidrivecli 本身没有同步命令，面板在挂载路径与本地目录之�
 | POST   | /api/sync/jobs/:id/run    | 运行（`dryRun` / `force`） |
 | POST   | /api/sync/jobs/:id/cancel | 取消运行       |
 | GET    | /api/sync/jobs/:id/log    | 最近一次运行日志 |
+| GET    | /api/fs/roots             | 可浏览的根目录和默认位置 |
+| GET    | /api/fs/list?path=        | 列目录         |
+| POST   | /api/fs/mkdir             | 新建文件夹     |
+| POST   | /api/fs/rename            | 重命名         |
+| POST   | /api/fs/delete            | 删除           |
+| POST   | /api/fs/transfer          | 复制/移动（`sources` `destDir` `op` `onConflict`），进度走 SSE |
+| POST   | /api/fs/transfer/:id/cancel | 取消传输     |
+| GET    | /api/fs/tasks             | 传输任务列表   |

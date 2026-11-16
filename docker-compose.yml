@@ -34,3 +34,8 @@ services:
     environment:
       - TZ=${TZ:-Asia/Shanghai}
       - PORT=3030
+      # Directories (inside the container) the file manager may browse, besides the RaiDrive mounts.
+      - FS_ROOTS=/mnt:/data:/media
+      # Strongly recommended: the panel can read, write and delete files.
+      # - PANEL_USER=admin
+      # - PANEL_PASSWORD=change-me

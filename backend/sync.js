@@ -14,7 +14,7 @@ const fsp = fs.promises;
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
+const { runRsync: spawnRsync } = require('./rsync-run');
 
 const MODES = new Set(['push', 'pull', 'bisync']);
 const CONFLICT_POLICIES = new Set(['newer', 'local', 'remote']);
@@ -422,38 +422,11 @@ function createSyncManager({ dataDir, broadcast, getMounts, rsyncBin = 'rsync', 
 
   // rsync wrapper. Resolves with the exit code; progress lines are parsed live.
   function runRsync(args, ctl, phase, onName) {
-    return new Promise((resolve, reject) => {
-      const child = spawn(rsyncBin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-      ctl.child = child;
-      let buf = '';
-      let errTail = '';
-      const onData = chunk => {
-        buf += chunk.toString();
-        const parts = buf.split(/[\r\n]+/);
-        buf = parts.pop();
-        for (const line of parts) handleLine(line);
-      };
-      const handleLine = line => {
-        const m = line.match(/^\s*([\d,]+)\s+(\d+)%\s+(\S+)\s+(\S+)/);
-        if (m) {
-          ctl.setProgress({ phase, bytes: Number(m[1].replace(/,/g, '')), pct: Number(m[2]), rate: m[3], eta: m[4] });
-        } else if (line.trim() && !/^(sending|receiving|building|sent |total size|created directory)/.test(line)) {
-          if (onName) onName(line.trim());
-          ctl.say(line.trim());
-        }
-      };
-      child.stdout.on('data', onData);
-      child.stderr.on('data', c => {
-        errTail = (errTail + c.toString()).slice(-2000);
-        onData(c);
-      });
-      child.on('error', e => reject(new Error(e.code === 'ENOENT' ? `${rsyncBin} not found in PATH` : e.message)));
-      child.on('close', (code, signal) => {
-        if (buf.trim()) handleLine(buf);
-        ctl.child = null;
-        ctl.setProgress(null, true);
-        resolve({ code: signal ? 143 : code, errTail });
-      });
+    return spawnRsync(rsyncBin, args, {
+      onChild: c => { ctl.child = c; },
+      onProgress: p => ctl.setProgress({ phase, ...p }),
+      onLine: line => { if (onName) onName(line); ctl.say(line); },
+      onClose: () => { ctl.child = null; ctl.setProgress(null, true); },
     });
   }
 

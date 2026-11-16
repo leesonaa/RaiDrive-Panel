@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RaiDrive Panel</title>
+<link rel="stylesheet" href="files.css">
 <style>
   :root {
     --bg:#0d1117; --surface:#161b22; --border:#21262d;
@@ -146,6 +147,9 @@
       <button class="nav-item" data-page="mounts">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12H2M5 12L2 9m0 6l3-3M19 12l3-3m0 6l-3-3"/></svg>挂载点
       </button>
+      <button class="nav-item" data-page="files">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="8" height="16" rx="1"/><rect x="13" y="4" width="8" height="16" rx="1"/><path d="M9 12h6M13 10l2 2-2 2"/></svg>文件管理
+      </button>
       <button class="nav-item" data-page="sync">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 01-15.5 6.2L3 16"/><path d="M3 12a9 9 0 0115.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/></svg>文件同步
       </button>
@@ -203,6 +207,9 @@
         <div class="card" id="detail-body"></div>
       </div>
     </div>
+
+    <!-- Files -->
+    <div class="page" id="page-files"></div>
 
     <!-- Sync -->
     <div class="page" id="page-sync">
@@ -449,6 +456,7 @@ document.querySelectorAll('.nav-item').forEach(btn => {
     if (page === 'dashboard') initDash();
     if (page === 'mounts')    fetchMounts();
     if (page === 'sync')      fetchSync();
+    if (page === 'files' && window.filesInit) filesInit();
   });
 });
 
@@ -665,6 +673,7 @@ es.onmessage = e => {
   if (d.type === 'cmd') appendLog(d.ok ? 'cmd' : 'err-line', `$ ${d.cmd}\n${d.output}`);
   if (d.type === 'log') appendLog('', d.msg);
   if (d.type === 'sync') onSyncEvent(d);
+  if (d.type === 'xfer' && window.onXferEvent) onXferEvent(d);
 };
 
 // ── Sync ──────────────────────────────────────────────────────
@@ -865,5 +874,6 @@ function esc(s) {
 onSvcChange();
 initDash();
 </script>
+<script src="files.js"></script>
 </body>
 </html>

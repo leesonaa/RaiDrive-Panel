@@ -1,0 +1,53 @@
+/* Dual-pane file manager */
+#page-files.active{display:flex;flex-direction:column;height:calc(100vh - 56px)}
+#page-files .page-header{margin-bottom:14px}
+.f-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.seg button{background:transparent;border:0;color:var(--muted);padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer}
+.seg button.on{background:rgba(88,166,255,.15);color:var(--accent)}
+.f-panes{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fpane{background:var(--surface);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+.fpane.active-pane{border-color:rgba(88,166,255,.45)}
+.fp-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;padding:8px;border-bottom:1px solid var(--border)}
+.fp-head .sp{flex:1}
+.fp-title{font-size:12px;font-weight:700;white-space:nowrap;padding:0 4px;color:var(--text)}
+.fp-loc{width:auto;max-width:120px;padding:5px 6px;font-size:12px}
+.fp-path{order:10;flex:1 1 100%;min-width:0;padding:5px 9px;font-size:12px;font-family:var(--mono)}
+.ib{background:transparent;border:0;color:var(--muted);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;line-height:1;flex-shrink:0}
+.ib:hover:not(:disabled){background:var(--border);color:var(--text)}
+.ib:disabled{opacity:.3;cursor:default}
+.ib.on{color:#d29922}
+.fp-filter{padding:6px 8px;border-bottom:1px solid var(--border)}
+.fp-filter input{padding:5px 9px;font-size:12px}
+.fp-cols,.fp-row{display:grid;grid-template-columns:minmax(0,1fr) 84px 140px;gap:8px;align-items:center;padding:0 12px}
+.fp-cols{font-size:11px;color:var(--muted);font-weight:700;border-bottom:1px solid var(--border);height:30px;user-select:none}
+.fp-cols span{cursor:pointer;white-space:nowrap}
+.fp-cols span:hover{color:var(--text)}
+.fp-cols .num,.fp-row .num{text-align:right}
+.fp-list{flex:1;overflow-y:auto;outline:none;position:relative}
+.fp-row{height:30px;font-size:13px;cursor:default;user-select:none;border-left:2px solid transparent}
+.fp-row:hover{background:rgba(255,255,255,.04)}
+.fp-row.sel{background:rgba(88,166,255,.16);border-left-color:var(--accent)}
+.fp-row.drop-target{background:rgba(63,185,80,.2);outline:1px dashed var(--accent2);outline-offset:-1px}
+.fp-name{display:flex;align-items:center;gap:8px;min-width:0}
+.fp-name b{font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fp-name i{font-style:normal;flex-shrink:0}
+.fp-row .dim{color:var(--muted);font-size:12px;white-space:nowrap}
+.fp-list.drop-target{box-shadow:inset 0 0 0 2px rgba(63,185,80,.55)}
+.fp-empty{padding:30px;text-align:center;color:var(--muted);font-size:13px}
+.fp-foot{display:flex;align-items:center;gap:6px;padding:6px 10px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)}
+.fp-foot .sp{flex:1}
+.fp-foot button{font-size:11px;padding:3px 8px}
+.xfer-panel{margin-top:12px;display:flex;flex-direction:column;gap:6px;max-height:190px;overflow-y:auto}
+.xfer{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px}
+.xfer-top{display:flex;align-items:center;gap:10px}
+.xfer-title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.xfer-st{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.xfer.ok .xfer-st{color:var(--accent2)}.xfer.bad .xfer-st{color:var(--warn)}
+.xfer .bar{margin-top:6px}
+.modal-bg{position:fixed;inset:0;background:rgba(1,4,9,.7);display:flex;align-items:center;justify-content:center;z-index:1000}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:460px;width:calc(100% - 32px);box-shadow:0 16px 48px rgba(0,0,0,.5)}
+.modal h3{font-size:15px;margin-bottom:10px}
+.modal p{font-size:13px;color:var(--muted);margin-bottom:8px;word-break:break-all}
+.modal .btns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
+@media(max-width:900px){.f-panes{grid-template-columns:1fr;grid-auto-rows:minmax(300px,1fr);overflow-y:auto}#page-files.active{height:auto}}

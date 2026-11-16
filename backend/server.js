@@ -2,7 +2,9 @@ const express = require('express');
 const { exec, execFile, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { createSyncManager } = require('./sync');
+const { createFsApi, defaultRoots } = require('./fs-api');
 
 let cron = null;
 try { cron = require('node-cron'); } catch { /* scheduling disabled */ }
@@ -10,8 +12,30 @@ try { cron = require('node-cron'); } catch { /* scheduling disabled */ }
 const app = express();
 const PORT = process.env.PORT || 3030;
 
+// Optional HTTP Basic auth. The panel can read, write and delete files, so set
+// PANEL_USER and PANEL_PASSWORD whenever the port is reachable by anyone else.
+if (process.env.PANEL_USER && process.env.PANEL_PASSWORD) {
+  const sha = s => crypto.createHash('sha256').update(String(s)).digest();
+  const wantUser = sha(process.env.PANEL_USER);
+  const wantPass = sha(process.env.PANEL_PASSWORD);
+  app.use((req, res, next) => {
+    const m = (req.headers.authorization || '').match(/^Basic (.+)$/i);
+    if (m) {
+      const decoded = Buffer.from(m[1], 'base64').toString();
+      const i = decoded.indexOf(':');
+      const user = i === -1 ? decoded : decoded.slice(0, i);
+      const pass = i === -1 ? '' : decoded.slice(i + 1);
+      if (crypto.timingSafeEqual(sha(user), wantUser) & crypto.timingSafeEqual(sha(pass), wantPass)) return next();
+    }
+    res.set('WWW-Authenticate', 'Basic realm="RaiDrive Panel"').status(401).send('Authentication required');
+  });
+}
+
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'frontend')));
+// Docker layout puts frontend/ next to server.js; a repo checkout has it one level up.
+const FRONTEND_DIR = [path.join(__dirname, 'frontend'), path.join(__dirname, '..', 'frontend')]
+  .find(d => fs.existsSync(path.join(d, 'index.html'))) || path.join(__dirname, 'frontend');
+app.use(express.static(FRONTEND_DIR));
 
 // SSE clients for log streaming
 const sseClients = new Set();
@@ -21,14 +45,14 @@ function broadcast(data) {
   sseClients.forEach(res => res.write(msg));
 }
 
-function runCli(args) {
+function runCli(args, { quiet = false } = {}) {
   return new Promise((resolve) => {
     const cliEnv = { ...process.env, COLUMNS: '320', LINES: '200', TERM: 'dumb', NO_COLOR: '1' };
     if (Array.isArray(args)) {
       const cmd = `raidrivecli ${args.map(a => JSON.stringify(a)).join(' ')}`;
       execFile('raidrivecli', args, { timeout: 30000, env: cliEnv }, (err, stdout, stderr) => {
         const output = (stdout + stderr).trim();
-        broadcast({ type: 'cmd', cmd, output, ok: !err });
+        if (!quiet) broadcast({ type: 'cmd', cmd, output, ok: !err });
         resolve({ ok: !err, output, code: err?.code });
       });
       return;
@@ -393,14 +417,18 @@ app.post('/api/add', async (req, res) => {
 app.post('/api/mount', async (req, res) => {
   const { label } = req.body;
   if (!label) return res.status(400).json({ ok: false, output: 'label is required' });
-  res.json(await runCli(['mount', label]));
+  const r = await runCli(['mount', label]);
+  invalidateMounts();
+  res.json(r);
 });
 
 // ── POST /api/unmount ────────────────────────────────────
 app.post('/api/unmount', async (req, res) => {
   const { label } = req.body;
   if (!label) return res.status(400).json({ ok: false, output: 'label is required' });
-  res.json(await runCli(['unmount', label, '-y']));
+  const r = await runCli(['unmount', label, '-y']);
+  invalidateMounts();
+  res.json(r);
 });
 
 // ── DELETE /api/remove ───────────────────────────────────
@@ -476,6 +504,18 @@ app.get('/api/daemon-logs', (req, res) => {
     res.json({ ok: false, output: e.message });
   }
 });
+
+// ── File manager (see fs-api.js) ─────────────────────────
+let mountsCache = { t: 0, v: null };
+async function getMountsCached() {
+  if (mountsCache.v && Date.now() - mountsCache.t < 3000) return mountsCache.v;
+  const r = await runCli(['list'], { quiet: true });
+  if (!r.ok) throw new Error(r.output || 'raidrivecli list failed');
+  mountsCache = { t: Date.now(), v: parseList(r.output) };
+  return mountsCache.v;
+}
+const invalidateMounts = () => { mountsCache.t = 0; };
+createFsApi({ broadcast, getMounts: getMountsCached, roots: defaultRoots() }).registerRoutes(app);
 
 // ── File sync (see sync.js) ──────────────────────────────
 const sync = createSyncManager({
