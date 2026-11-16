@@ -9,7 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # ── Install RaiDrive CLI ─────────────────────────────────────
 # Using the latest deb package (amd64). For arm64, change the filename accordingly.
-ARG ARCH=amd64
+# buildx sets TARGETARCH (amd64/arm64) per platform; override with --build-arg ARCH=... if needed.
+ARG TARGETARCH
+ARG ARCH=${TARGETARCH:-amd64}
 RUN wget -q "https://app.raidrive.com/deb/pool/main/r/raidrive/raidrive_2025.12.0-linux_${ARCH}.deb" -O /tmp/raidrive.deb \
     && apt-get update \
     && apt-get install -y --no-install-recommends /tmp/raidrive.deb \

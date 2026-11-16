@@ -28,9 +28,15 @@ docker compose up -d --build
 open http://localhost:3030
 ```
 
+## GitHub Actions 构建
+
+`.github/workflows/docker.yml`：push 到 main 时先跑 `npm test`，再构建 amd64 + arm64 镜像并推送到 Docker Hub（`leesonaa/raidrive-panel:latest`，打 tag `v*` 时另出版本号 tag）。PR 只构建不推送。
+
+需要在仓库 Settings → Secrets and variables → Actions 添加：`DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`（Docker Hub Access Token）。
+
 ## ARM 架构（如 Orange Pi 5 Plus / RK3588）
 
-修改 `docker-compose.yml` 中的 build args：
+使用 Actions 构建的镜像无需任何设置，arm64 自动选择。本地手动构建时可修改 `docker-compose.yml` 中的 build args：
 
 ```yaml
 args:
