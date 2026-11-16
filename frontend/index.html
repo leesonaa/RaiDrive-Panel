@@ -113,6 +113,17 @@
   .toast.ok{border-left:3px solid var(--accent2)}.toast.err{border-left:3px solid var(--warn)}
   @keyframes toastIn{from{transform:translateX(30px);opacity:0}to{transform:translateX(0);opacity:1}}
 
+  /* Sync */
+  .bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:8px}
+  .bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+  .sync-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+  .sync-top{display:flex;align-items:center;gap:12px}
+  .sync-paths{font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:4px;word-break:break-all}
+  .sync-last{font-size:11px;color:var(--muted);margin-top:6px}
+  .sync-prog-text{font-size:11px;color:var(--accent);font-family:var(--mono);margin-top:6px}
+  .badge.warn{background:rgba(210,153,34,.15);color:#d29922}
+  .hint{font-size:11px;color:var(--muted);margin-top:4px}
+
   /* Misc */
   .empty{text-align:center;padding:40px 24px;color:var(--muted);font-size:14px}
   .empty .emo{font-size:36px;margin-bottom:10px}
@@ -134,6 +145,9 @@
       </button>
       <button class="nav-item" data-page="mounts">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12H2M5 12L2 9m0 6l3-3M19 12l3-3m0 6l-3-3"/></svg>挂载点
+      </button>
+      <button class="nav-item" data-page="sync">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 01-15.5 6.2L3 16"/><path d="M3 12a9 9 0 0115.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/></svg>文件同步
       </button>
       <button class="nav-item" data-page="add">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>添加存储
@@ -187,6 +201,72 @@
       <div id="detail-panel" style="display:none;margin-top:20px">
         <div class="section-title">挂载点详情 — <span id="detail-label" style="color:var(--accent)"></span></div>
         <div class="card" id="detail-body"></div>
+      </div>
+    </div>
+
+    <!-- Sync -->
+    <div class="page" id="page-sync">
+      <div class="page-header">
+        <div><h1>文件同步</h1><p>挂载点与本地目录之间的同步，基于 rsync（双向由面板按上次同步快照计算）</p></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" onclick="fetchSync()">刷新</button>
+          <button class="btn btn-primary btn-sm" onclick="openSyncForm()">新建任务</button>
+        </div>
+      </div>
+
+      <div id="sync-form-wrap" class="card" style="display:none">
+        <div class="section-title" id="sync-form-title">新建同步任务</div>
+        <input type="hidden" id="sf-id">
+        <div class="form-row">
+          <div class="form-group"><label>任务名称</label><input id="sf-name" placeholder="例：照片备份"></div>
+          <div class="form-group"><label>同步模式</label>
+            <select id="sf-mode" onchange="onSyncModeChange()">
+              <option value="bisync">双向同步</option>
+              <option value="push">单向：本地 → 挂载点</option>
+              <option value="pull">单向：挂载点 → 本地</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>本地目录（容器内路径）</label><input id="sf-local" placeholder="/data/photos">
+            <div class="hint">需已通过 volume 映射进容器</div></div>
+          <div class="form-group"><label>挂载点目录</label><input id="sf-remote" list="sf-mounts" placeholder="/mnt/mycloud/photos">
+            <datalist id="sf-mounts"></datalist>
+            <div class="hint">必须位于一个 Connected 的挂载点之内</div></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" id="sf-conflict-wrap"><label>冲突策略（两边都改过）</label>
+            <select id="sf-conflict">
+              <option value="newer">较新的覆盖（败方备份）</option>
+              <option value="local">本地优先</option>
+              <option value="remote">挂载点优先</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Cron 定时（留空=仅手动）</label>
+            <input id="sf-schedule" placeholder="*/30 * * * *">
+            <div class="hint" id="sf-cron-hint">分 时 日 月 周，例：每天 3 点 = 0 3 * * *</div></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>限速 KB/s（0=不限）</label><input id="sf-bw" type="number" min="0" placeholder="0"></div>
+          <div class="form-group"><label>单次删除上限（超过则中止）</label><input id="sf-maxdel" type="number" min="0" placeholder="200"></div>
+        </div>
+        <div class="form-group"><label>排除规则（每行一条，支持 * ** ?）</label>
+          <textarea id="sf-excludes" rows="3" style="font-family:var(--mono)"></textarea></div>
+        <div class="checks-row">
+          <label class="form-check" id="sf-del-wrap"><input type="checkbox" id="sf-delete"> 删除目标端多余文件 (--delete)</label>
+          <label class="form-check"><input type="checkbox" id="sf-enabled" checked> 启用定时</label>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="saveSyncJob()">保存</button>
+          <button class="btn btn-ghost" onclick="closeSyncForm()">取消</button>
+        </div>
+      </div>
+
+      <div class="mount-list" id="sync-list"><div class="empty"><div class="emo">⏳</div>加载中...</div></div>
+
+      <div id="sync-log-wrap" style="display:none;margin-top:20px">
+        <div class="section-title">任务日志 — <span id="sync-log-name" style="color:var(--accent)"></span></div>
+        <div class="log-stream" id="sync-log" style="height:280px"></div>
       </div>
     </div>
 
@@ -368,6 +448,7 @@ document.querySelectorAll('.nav-item').forEach(btn => {
     document.getElementById('page-' + page).classList.add('active');
     if (page === 'dashboard') initDash();
     if (page === 'mounts')    fetchMounts();
+    if (page === 'sync')      fetchSync();
   });
 });
 
@@ -444,7 +525,7 @@ function mountCardHTML(m, showDetail) {
     <div class="mount-icon">${icon}</div>
     <div class="mount-info">
       <div class="mount-label">${esc(m.label)}</div>
-      <div class="mount-remote">${esc(m.remote || m['local path'] || '')}</div>
+      <div class="mount-remote">${esc(m.remote || '')}${m.mountPath ? ` → ${esc(m.mountPath)}` : ''}</div>
       ${m.user ? `<div class="mount-meta">user: ${esc(m.user)}  ·  ${esc(m.created || '')}</div>` : ''}
     </div>
     ${svcBadge}${badge}
@@ -583,7 +664,187 @@ es.onmessage = e => {
   const d = JSON.parse(e.data);
   if (d.type === 'cmd') appendLog(d.ok ? 'cmd' : 'err-line', `$ ${d.cmd}\n${d.output}`);
   if (d.type === 'log') appendLog('', d.msg);
+  if (d.type === 'sync') onSyncEvent(d);
 };
+
+// ── Sync ──────────────────────────────────────────────────────
+let syncJobs = [];
+let syncLogJob = null;
+const MODE_LABEL = { bisync: '双向 ⇄', push: '本地 → 挂载点', pull: '挂载点 → 本地' };
+const RUN_LABEL  = { success: '成功', partial: '部分失败', failed: '失败', cancelled: '已取消' };
+
+async function fetchSync() {
+  const r = await api('GET', '/sync/jobs');
+  if (!r.ok) { toast('❌ ' + r.output, true); return; }
+  syncJobs = r.jobs;
+  document.getElementById('sf-cron-hint').style.display = r.cron ? '' : 'none';
+  renderSync();
+  // Offer connected mount paths when typing the remote directory.
+  const ls = await api('GET', '/list');
+  document.getElementById('sf-mounts').innerHTML = (ls.mounts || [])
+    .filter(m => isConnectedState(m.state) && m.mountPath)
+    .map(m => `<option value="${esc(m.mountPath)}">${esc(m.label)}</option>`).join('');
+}
+
+function fmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  const u = ['KB','MB','GB','TB']; let i = -1;
+  do { n /= 1024; i++; } while (n >= 1024 && i < u.length - 1);
+  return n.toFixed(1) + ' ' + u[i];
+}
+
+function lastRunText(j) {
+  const r = j.lastRun;
+  if (!r) return '尚未运行';
+  const parts = [`${RUN_LABEL[r.status] || r.status}`, new Date(r.endedAt).toLocaleString()];
+  if (r.up || r.down) parts.push(`↑${r.up} ↓${r.down}`);
+  if (r.deletedLocal || r.deletedRemote) parts.push(`删除 本地${r.deletedLocal}/远端${r.deletedRemote}`);
+  if (r.conflicts) parts.push(`冲突 ${r.conflicts}`);
+  if (r.error) parts.push(r.error);
+  return parts.join(' · ');
+}
+
+function renderSync() {
+  const el = document.getElementById('sync-list');
+  if (!syncJobs.length) {
+    el.innerHTML = '<div class="empty"><div class="emo">🔄</div>暂无同步任务，点右上角「新建任务」</div>';
+    return;
+  }
+  el.innerHTML = syncJobs.map(j => {
+    const st = j.lastRun?.status;
+    const badge = j.running ? '<span class="badge connected">运行中</span>'
+      : st === 'failed' ? '<span class="badge disconnected">失败</span>'
+      : st === 'partial' ? '<span class="badge warn">部分失败</span>'
+      : '';
+    const actions = j.running
+      ? `<button class="btn btn-danger btn-sm" onclick="syncCancel('${j.id}')">取消</button>`
+      : `<button class="btn btn-success btn-sm" onclick="syncRun('${j.id}')">运行</button>
+         <button class="btn btn-ghost btn-sm" onclick="syncRun('${j.id}',{dryRun:true})">试运行</button>
+         ${j.lastRun?.safetyAbort ? `<button class="btn btn-danger btn-sm" onclick="syncRun('${j.id}',{force:true})">强制运行</button>` : ''}
+         <button class="btn btn-ghost btn-sm" onclick="openSyncForm('${j.id}')">编辑</button>
+         <button class="btn btn-danger btn-sm" onclick="syncDelete('${j.id}')">删除</button>`;
+    return `<div class="sync-card" id="sync-${j.id}">
+      <div class="sync-top">
+        <div class="mount-info">
+          <div class="mount-label">${esc(j.name)}</div>
+          <div class="sync-paths">${esc(j.localPath)} ${j.mode === 'pull' ? '←' : j.mode === 'push' ? '→' : '⇄'} ${esc(j.remotePath)}</div>
+        </div>
+        <span class="badge svc">${MODE_LABEL[j.mode]}</span>
+        ${j.schedule ? `<span class="badge svc" title="${j.enabled ? '' : '定时已停用'}">${j.enabled ? '⏱' : '⏸'} ${esc(j.schedule)}</span>` : ''}
+        ${badge}
+        <div class="mount-actions">${actions}
+          <button class="btn btn-ghost btn-sm" onclick="showSyncLog('${j.id}')">日志</button></div>
+      </div>
+      <div class="bar" style="display:${j.running ? 'block' : 'none'}"><i id="sync-bar-${j.id}"></i></div>
+      <div class="sync-prog-text" id="sync-ptxt-${j.id}" style="display:${j.running ? 'block' : 'none'}">准备中...</div>
+      <div class="sync-last">${esc(lastRunText(j))}</div>
+    </div>`;
+  }).join('');
+  syncJobs.filter(j => j.running && j.progress).forEach(j => applySyncProgress(j.id, j.progress));
+}
+
+function applySyncProgress(id, p) {
+  const bar = document.getElementById('sync-bar-' + id);
+  const txt = document.getElementById('sync-ptxt-' + id);
+  if (!bar || !txt) return;
+  if (!p) return;
+  bar.style.width = p.pct + '%';
+  txt.textContent = `${p.phase === 'upload' ? '上传' : '下载'} ${p.pct}% · ${fmtBytes(p.bytes)} · ${p.rate} · 剩余 ${p.eta}`;
+}
+
+function onSyncEvent(d) {
+  if (d.event === 'progress') applySyncProgress(d.jobId, d.progress);
+  if (d.event === 'log' && d.jobId === syncLogJob) appendSyncLog(d);
+  if (d.event === 'status') {
+    if (d.state !== 'running') {
+      const j = syncJobs.find(x => x.id === d.jobId);
+      const name = j ? j.name : d.jobId;
+      toast(d.state === 'success' ? `✅ ${name} 同步完成` : `${d.state === 'cancelled' ? '⏹' : '⚠️'} ${name}：${RUN_LABEL[d.state] || d.state}${d.run?.error ? ' — ' + d.run.error : ''}`, d.state === 'failed');
+    }
+    if (document.getElementById('page-sync').classList.contains('active')) fetchSync();
+  }
+}
+
+async function syncRun(id, opts = {}) {
+  if (opts.force && !confirm('强制运行会跳过删除数量与空目录保护，确认继续？')) return;
+  const r = await api('POST', `/sync/jobs/${id}/run`, opts);
+  if (!r.ok) { toast('❌ ' + r.output, true); return; }
+  showSyncLog(id);
+  fetchSync();
+}
+async function syncCancel(id) {
+  const r = await api('POST', `/sync/jobs/${id}/cancel`);
+  if (!r.ok) toast('❌ ' + r.output, true);
+}
+async function syncDelete(id) {
+  const j = syncJobs.find(x => x.id === id);
+  if (!confirm(`删除同步任务 "${j?.name}"？（不会删除任何文件，但会丢失双向同步的状态记录）`)) return;
+  const r = await api('DELETE', `/sync/jobs/${id}`);
+  toast(r.ok ? '🗑️ 任务已删除' : '❌ ' + r.output, !r.ok);
+  if (syncLogJob === id) document.getElementById('sync-log-wrap').style.display = 'none';
+  fetchSync();
+}
+
+function appendSyncLog(l) {
+  const box = document.getElementById('sync-log');
+  const d = document.createElement('div');
+  d.className = 'log-line' + (l.level === 'error' ? ' err-line' : l.level === 'warn' ? ' dim' : '');
+  d.textContent = `[${new Date(l.ts).toLocaleTimeString()}] ${l.msg}`;
+  box.appendChild(d);
+  while (box.childElementCount > 1000) box.firstChild.remove();
+  box.scrollTop = box.scrollHeight;
+}
+async function showSyncLog(id) {
+  syncLogJob = id;
+  const j = syncJobs.find(x => x.id === id);
+  document.getElementById('sync-log-name').textContent = j ? j.name : id;
+  document.getElementById('sync-log-wrap').style.display = 'block';
+  document.getElementById('sync-log').innerHTML = '';
+  const r = await api('GET', `/sync/jobs/${id}/log`);
+  (r.log || []).forEach(appendSyncLog);
+}
+
+function onSyncModeChange() {
+  const m = document.getElementById('sf-mode').value;
+  document.getElementById('sf-conflict-wrap').style.display = m === 'bisync' ? '' : 'none';
+  document.getElementById('sf-del-wrap').style.display = m === 'bisync' ? 'none' : '';
+}
+function openSyncForm(id) {
+  const j = id ? syncJobs.find(x => x.id === id) : null;
+  document.getElementById('sync-form-title').textContent = j ? '编辑同步任务' : '新建同步任务';
+  const set = (k, val) => { document.getElementById(k).value = val ?? ''; };
+  set('sf-id', j?.id); set('sf-name', j?.name);
+  set('sf-mode', j?.mode || 'bisync');
+  set('sf-local', j?.localPath); set('sf-remote', j?.remotePath);
+  set('sf-conflict', j?.conflict || 'newer');
+  set('sf-schedule', j?.schedule);
+  set('sf-bw', j?.bwlimit || ''); set('sf-maxdel', j?.maxDelete ?? 200);
+  set('sf-excludes', (j?.excludes || ['.DS_Store', 'Thumbs.db', '*.part', '*.tmp']).join('\n'));
+  document.getElementById('sf-delete').checked = !!j?.deleteExtraneous;
+  document.getElementById('sf-enabled').checked = j ? !!j.enabled : true;
+  onSyncModeChange();
+  document.getElementById('sync-form-wrap').style.display = 'block';
+  document.getElementById('sync-form-wrap').scrollIntoView({behavior:'smooth'});
+}
+function closeSyncForm() { document.getElementById('sync-form-wrap').style.display = 'none'; }
+
+async function saveSyncJob() {
+  const id = v('sf-id');
+  const body = {
+    name: v('sf-name'), mode: v('sf-mode'),
+    localPath: v('sf-local'), remotePath: v('sf-remote'),
+    conflict: v('sf-conflict'), schedule: v('sf-schedule'),
+    bwlimit: v('sf-bw') || 0, maxDelete: v('sf-maxdel') || 0,
+    excludes: document.getElementById('sf-excludes').value,
+    deleteExtraneous: document.getElementById('sf-delete').checked,
+    enabled: document.getElementById('sf-enabled').checked,
+  };
+  const r = id ? await api('PUT', `/sync/jobs/${id}`, body) : await api('POST', '/sync/jobs', body);
+  if (!r.ok) { toast('❌ ' + r.output, true); return; }
+  toast('✅ 已保存');
+  closeSyncForm();
+  fetchSync();
+}
 
 // ── Toast ─────────────────────────────────────────────────────
 function toast(msg, isErr=false) {

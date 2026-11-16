@@ -25,6 +25,9 @@ services:
       - /mnt/user/appdata/raidrive-panel/config:/etc/raidrive
       - /mnt/user/appdata/raidrive-panel/cache:/var/cache/raidrive
       - /mnt/user/appdata/raidrive-panel/logs:/var/log/raidrive
+      # File sync: map every local directory you want to sync into the container.
+      # (sync jobs and their state live in /etc/raidrive/panel, i.e. the config volume above)
+      # - /mnt/user/photos:/data/photos
       # Optional: expose mounted filesystems to host/share
       # - /mnt/user/raidrive:/mnt:shared
 

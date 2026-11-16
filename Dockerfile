@@ -3,7 +3,7 @@ FROM debian:bookworm-slim
 # ── System dependencies ──────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget curl ca-certificates \
-    fuse3 \
+    fuse3 rsync \
     nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 

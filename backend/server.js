@@ -2,6 +2,10 @@ const express = require('express');
 const { exec, execFile, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { createSyncManager } = require('./sync');
+
+let cron = null;
+try { cron = require('node-cron'); } catch { /* scheduling disabled */ }
 
 const app = express();
 const PORT = process.env.PORT || 3030;
@@ -308,7 +312,8 @@ function parseLongList(output) {
 // Output: [Basic Configurations] block + [SFTP/WebDAV/... Configurations] block
 // Each line: "description (--flag): value"
 app.get('/api/show/:label', async (req, res) => {
-  const result = await runCli(`show "${req.params.label}"`);
+  // Array form: the label is user input and must never reach a shell.
+  const result = await runCli(['show', req.params.label]);
   // Parse into structured sections
   const sections = {};
   let currentSection = 'General';
@@ -472,4 +477,19 @@ app.get('/api/daemon-logs', (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`RaiDrive Panel on :${PORT}`));
+// ── File sync (see sync.js) ──────────────────────────────
+const sync = createSyncManager({
+  dataDir: process.env.SYNC_DATA_DIR || '/etc/raidrive/panel',
+  broadcast,
+  cron,
+  getMounts: async () => {
+    const r = await runCli(['list']);
+    if (!r.ok) throw new Error(r.output || 'raidrivecli list failed');
+    return parseList(r.output);
+  },
+});
+sync.registerRoutes(app);
+
+sync.init()
+  .catch(e => console.error('[sync] init failed:', e.message))
+  .finally(() => app.listen(PORT, () => console.log(`RaiDrive Panel on :${PORT}`)));
