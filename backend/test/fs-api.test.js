@@ -175,3 +175,33 @@ test('mkdir, rename and delete respect roots and existing names', async () => {
   assert.equal(r.deleted, 2);
   assert.equal(await exists(path.join(c.local, 'c.txt')), false);
 });
+
+test('detectVolumes: mapped volumes yes, container system paths no', () => {
+  const { detectVolumes } = require('../fs-api');
+  const info = [
+    '1 0 0:50 / / rw - overlay overlay rw',
+    '2 1 0:5 / /proc rw - proc proc rw',
+    '3 1 0:6 / /dev rw - tmpfs tmpfs rw',
+    '4 1 8:1 /disk1/raidrive /mnt rw shared:1 - ext4 /dev/sda1 rw',
+    '5 1 8:2 /moviedata /mnt2 rw shared:2 - xfs /dev/sdb1 rw',
+    '6 1 8:1 /appdata/config /etc/raidrive rw - ext4 /dev/sda1 rw',
+    '7 1 8:1 /appdata/logs /var/log/raidrive rw - ext4 /dev/sda1 rw',
+    '8 1 8:1 /x/hosts /etc/hosts rw - ext4 /dev/sda1 rw',
+    '9 1 8:3 /my\\040files /data/my\\040files rw - btrfs /dev/sdc1 rw',
+    '10 1 0:60 / /mnt/cloud rw - fuse.raidrive raidrive rw',
+  ].join('\n');
+  assert.deepEqual(detectVolumes(info).sort(), ['/data/my files', '/mnt', '/mnt/cloud', '/mnt2']);
+});
+
+test('detected volumes are browsable; the error names the allowed roots', async () => {
+  const c = await setup();
+  const extra = path.join(c.base, 'mnt2');
+  await fsp.mkdir(extra);
+  await put(path.join(extra, 'movie.mkv'), 'm');
+  const plain = createFsApi({ roots: [c.local], broadcast() {}, getMounts: async () => [] });
+  await assert.rejects(plain.listDir(extra), e => /outside the allowed roots/.test(e.message) && e.message.includes(c.local));
+  const detecting = createFsApi({ roots: [c.local], detect: () => [extra, path.join(c.base, 'not-here')], broadcast() {}, getMounts: async () => [] });
+  assert.equal((await detecting.listDir(extra)).entries[0].name, 'movie.mkv');
+  const roots = (await detecting.getRoots()).roots.map(r => r.path);
+  assert.ok(roots.includes(extra) && !roots.some(p => p.endsWith('not-here')));
+});

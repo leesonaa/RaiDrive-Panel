@@ -86,7 +86,7 @@ Google Drive、OneDrive、Dropbox 等需要浏览器 OAuth 授权，在无头容
 - 底部显示传输进度，可取消；Delete 删除、F2 重命名
 - 「⇄ 同步这两个目录」会用当前两栏目录预填一个任务式同步（见下）
 
-可浏览范围由环境变量 `FS_ROOTS`（冒号分隔，默认 `/mnt:/data:/media`）加上所有 RaiDrive 挂载路径决定，符号链接不能指向范围之外。未 Connected 的挂载点拒绝浏览和写入，避免把文件写进掉线后的空目录。
+可浏览范围：所有 RaiDrive 挂载路径，加上**映射进容器的所有卷**（自动识别，例如 `/mnt/disk2/movies:/mnt2` 直接可用；容器自身的系统目录和 `/etc/raidrive` 等配置卷不在内）。如需严格限制，设置 `FS_ROOTS`（冒号分隔的容器内路径），设置后只允许列出的目录；`FS_AUTODETECT=0` 可关闭自动识别。符号链接不能指向范围之外。未 Connected 的挂载点拒绝浏览和写入，避免把文件写进掉线后的空目录。
 
 **安全**：这个面板能读写删除容器内文件，请设置 `PANEL_USER` 和 `PANEL_PASSWORD` 开启 HTTP Basic 认证（两个都设才生效），不要把 3030 端口暴露到公网。
 

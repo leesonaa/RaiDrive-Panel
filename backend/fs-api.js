@@ -2,7 +2,8 @@
 // Dual-pane file manager backend: browse, mkdir, rename, delete and rsync-based
 // copy/move between any two allowed directories (typically a local dir and a RaiDrive mount).
 //
-// Everything is confined to allowed roots (FS_ROOTS plus every RaiDrive mount path).
+// Everything is confined to allowed roots: RaiDrive mount paths, FS_ROOTS, and (in Docker,
+// unless FS_ROOTS is set) every volume mapped into the container.
 // Paths are checked lexically and again after realpath(), so symlinks cannot escape.
 
 const fs = require('fs');
@@ -113,7 +114,40 @@ async function removeEmptyDirs(dir) {
   try { await fsp.rmdir(dir); return true; } catch { return false; }
 }
 
-function createFsApi({ broadcast, getMounts, roots: baseRoots, rsyncBin = 'rsync' }) {
+// ── volume auto-detection ────────────────────────────────────
+// Inside Docker, every volume the user mapped shows up in /proc/self/mountinfo.
+// Treat those as browsable so a mapping like /mnt/disk2/movies:/mnt2 just works,
+// while the container's own system paths and the panel's config volumes stay off limits.
+const VIRTUAL_FS = new Set(['proc', 'sysfs', 'tmpfs', 'devtmpfs', 'devpts', 'mqueue', 'cgroup', 'cgroup2', 'shm',
+  'overlay', 'securityfs', 'debugfs', 'tracefs', 'configfs', 'fusectl', 'pstore', 'bpf', 'nsfs', 'autofs',
+  'binfmt_misc', 'hugetlbfs', 'selinuxfs', 'rpc_pipefs']);
+const SYSTEM_PREFIXES = ['/etc', '/proc', '/sys', '/dev', '/run', '/var', '/usr', '/lib', '/lib64', '/bin',
+  '/sbin', '/boot', '/app', '/tmp', '/root'];
+
+function detectVolumes(mountinfo) {
+  const out = new Set();
+  for (const line of String(mountinfo).split('\n')) {
+    const sep = line.indexOf(' - ');
+    if (sep === -1) continue;
+    const pre = line.slice(0, sep).split(' ');
+    const fstype = line.slice(sep + 3).split(' ')[0];
+    if (pre.length < 5) continue;
+    const mp = pre[4].replace(/\\([0-7]{3})/g, (_, o) => String.fromCharCode(parseInt(o, 8)));
+    if (mp === '/' || VIRTUAL_FS.has(fstype)) continue;
+    if (SYSTEM_PREFIXES.some(p => mp === p || mp.startsWith(p + '/'))) continue;
+    out.add(mp);
+  }
+  return [...out];
+}
+
+function defaultDetect() {
+  if (process.env.FS_AUTODETECT === '0') return [];
+  const inContainer = fs.existsSync('/.dockerenv') || process.env.FS_AUTODETECT === '1';
+  if (!inContainer) return [];
+  try { return detectVolumes(fs.readFileSync('/proc/self/mountinfo', 'utf8')); } catch { return []; }
+}
+
+function createFsApi({ broadcast, getMounts, roots: baseRoots, detect = null, rsyncBin = 'rsync' }) {
   const tasks = new Map();
   const emit = ev => { try { broadcast({ type: 'xfer', ...ev }); } catch { /* no listeners */ } };
 
@@ -133,6 +167,7 @@ function createFsApi({ broadcast, getMounts, roots: baseRoots, rsyncBin = 'rsync
     };
     for (const m of mounts) if (m.mountPath) add(m.mountPath, { kind: 'mount', label: m.label, state: m.state });
     for (const r of baseRoots) add(r, { kind: 'dir', label: path.basename(r) || r });
+    for (const r of (detect ? detect() : [])) add(r, { kind: 'dir', label: path.basename(r) || r });
     for (const r of list) {
       try { r.real = await fsp.realpath(r.path); } catch { r.real = null; }
     }
@@ -144,7 +179,10 @@ function createFsApi({ broadcast, getMounts, roots: baseRoots, rsyncBin = 'rsync
       throw new HttpError(400, 'an absolute path is required');
     }
     const abs = path.resolve(p);
-    if (!roots.some(r => isInside(r.path, abs))) throw new HttpError(403, 'path is outside the allowed roots');
+    if (!roots.some(r => isInside(r.path, abs))) {
+      const shown = roots.filter(r => r.kind === 'mount' || r.real).map(r => r.path).join(', ') || 'none';
+      throw new HttpError(403, `path is outside the allowed roots (allowed: ${shown}). Map the folder into the container; set FS_ROOTS to allow extra paths`);
+    }
     let real;
     try { real = await realpathLoose(abs); } catch (e) { throw new HttpError(404, `not accessible: ${e.code || e.message}`); }
     if (!roots.some(r => r.real && isInside(r.real, real))) {
@@ -160,7 +198,10 @@ function createFsApi({ broadcast, getMounts, roots: baseRoots, rsyncBin = 'rsync
     const roots = await allowedRoots(mounts);
     const out = [];
     for (const r of roots) {
-      if (r.kind === 'dir' && !r.real) continue; // configured but not present in this container
+      if (r.kind === 'dir') { // configured/detected but maybe absent, or a bind-mounted file
+        const st = r.real ? await fsp.stat(r.real).catch(() => null) : null;
+        if (!st || !st.isDirectory()) continue;
+      }
       out.push({ path: r.path, label: r.label, kind: r.kind, state: r.state });
     }
     const dirs = out.filter(r => r.kind === 'dir');
@@ -439,4 +480,4 @@ function defaultRoots() {
   return (process.env.FS_ROOTS || '/mnt:/data:/media').split(':').map(s => s.trim()).filter(Boolean);
 }
 
-module.exports = { createFsApi, defaultRoots };
+module.exports = { createFsApi, defaultRoots, defaultDetect, detectVolumes };

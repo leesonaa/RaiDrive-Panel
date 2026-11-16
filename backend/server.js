@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { createSyncManager } = require('./sync');
-const { createFsApi, defaultRoots } = require('./fs-api');
+const { createFsApi, defaultRoots, defaultDetect } = require('./fs-api');
 
 let cron = null;
 try { cron = require('node-cron'); } catch { /* scheduling disabled */ }
@@ -515,7 +515,11 @@ async function getMountsCached() {
   return mountsCache.v;
 }
 const invalidateMounts = () => { mountsCache.t = 0; };
-createFsApi({ broadcast, getMounts: getMountsCached, roots: defaultRoots() }).registerRoutes(app);
+// An explicit FS_ROOTS is a strict allowlist; without it, volumes mapped into the container are detected.
+createFsApi({
+  broadcast, getMounts: getMountsCached, roots: defaultRoots(),
+  detect: process.env.FS_ROOTS ? null : defaultDetect,
+}).registerRoutes(app);
 
 // ── File sync (see sync.js) ──────────────────────────────
 const sync = createSyncManager({

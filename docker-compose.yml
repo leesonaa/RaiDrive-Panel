@@ -34,8 +34,9 @@ services:
     environment:
       - TZ=${TZ:-Asia/Shanghai}
       - PORT=3030
-      # Directories (inside the container) the file manager may browse, besides the RaiDrive mounts.
-      - FS_ROOTS=/mnt:/data:/media
+      # The file manager can browse the RaiDrive mounts and every volume mapped into the container.
+      # Setting FS_ROOTS turns that into a strict allowlist (colon-separated, container paths):
+      # - FS_ROOTS=/mnt:/mnt2
       # Strongly recommended: the panel can read, write and delete files.
       # - PANEL_USER=admin
       # - PANEL_PASSWORD=change-me
