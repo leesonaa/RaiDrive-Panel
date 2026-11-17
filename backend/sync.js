@@ -195,7 +195,7 @@ function validateAbsPath(v, field) {
 
 // ── manager ──────────────────────────────────────────────────
 
-function createSyncManager({ dataDir, broadcast, getMounts, rsyncBin = 'rsync', cron = null }) {
+function createSyncManager({ dataDir, broadcast, getMounts, rsyncBin = 'rsync', cron = null, perms = require('./perms').createPerms() }) {
   const jobsFile = path.join(dataDir, 'sync-jobs.json');
   const stateDir = path.join(dataDir, 'sync-state');
   const conflictDir = path.join(dataDir, 'sync-conflicts');
@@ -431,7 +431,7 @@ function createSyncManager({ dataDir, broadcast, getMounts, rsyncBin = 'rsync', 
   }
 
   function baseRsyncArgs(job, destIsRemote, dryRun) {
-    const args = ['-lt', '--no-perms', '--no-owner', '--no-group',
+    const args = ['-lt', ...(destIsRemote ? ['--no-perms', '--no-owner', '--no-group'] : perms.rsyncArgs()),
       `--modify-window=${MTIME_WINDOW}`, '--info=progress2,name1', '--no-inc-recursive'];
     // Renaming temp files on cloud FUSE mounts is slow or unsupported; write in place there.
     args.push(destIsRemote ? '--inplace' : '--partial');
@@ -588,7 +588,7 @@ function createSyncManager({ dataDir, broadcast, getMounts, rsyncBin = 'rsync', 
     }
 
     for (const d of plan.mkdirRemote) await fsp.mkdir(path.join(remote, d), { recursive: true });
-    for (const d of plan.mkdirLocal) await fsp.mkdir(path.join(local, d), { recursive: true });
+    for (const d of plan.mkdirLocal) await perms.mkdirp(path.join(local, d));
 
     let partial = false;
     partial = (await transferList(job, ctl, plan.toRemote, local, remote, true)) || partial;

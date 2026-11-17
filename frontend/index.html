@@ -420,6 +420,23 @@
         <div id="signin-out" style="margin-top:12px;display:none"><div class="terminal" id="signin-terminal"></div></div>
       </div>
       <div class="card">
+        <div class="section-title">文件权限(属主 / 权限)</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;line-height:1.7">
+          控制面板<b>写入本地目录</b>的文件和文件夹的属主与权限(文件管理拖拽/粘贴、文件同步、新建文件夹)。写入云盘挂载点不受影响。留空则保持默认(由容器用户 root 创建)。
+        </p>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap" id="perm-presets"></div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;max-width:520px">
+          <label style="font-size:12px;color:var(--muted)">UID(用户)<input id="perm-uid" type="number" min="0" placeholder="如 99"></label>
+          <label style="font-size:12px;color:var(--muted)">GID(用户组)<input id="perm-gid" type="number" min="0" placeholder="如 100"></label>
+          <label style="font-size:12px;color:var(--muted)">UMASK<input id="perm-umask" placeholder="如 022"></label>
+        </div>
+        <p id="perm-info" style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.7"></p>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-primary" onclick="savePerms()">保存</button>
+          <button class="btn btn-ghost" onclick="resetPerms()">恢复默认</button>
+        </div>
+      </div>
+      <div class="card">
         <div class="section-title">关于</div>
         <div style="font-size:13px;color:var(--muted);line-height:2">
           RaiDrive Panel — Node.js + Express + 原生 HTML/CSS<br>
@@ -456,6 +473,7 @@ document.querySelectorAll('.nav-item').forEach(btn => {
     if (page === 'dashboard') initDash();
     if (page === 'mounts')    fetchMounts();
     if (page === 'sync')      fetchSync();
+    if (page === 'settings')  fetchPerms();
     if (page === 'files' && window.filesInit) filesInit();
   });
 });
@@ -473,6 +491,35 @@ function isConnectedState(state) {
   const s = String(state || '').toLowerCase();
   return s === 'connected' || s === 'mounted';
 }
+
+
+// ── File permissions ──────────────────────────────────────────
+function renderPerms(p) {
+  const set = (id, val) => { document.getElementById(id).value = val == null ? '' : val; };
+  set('perm-uid', p.uid); set('perm-gid', p.gid); set('perm-umask', p.umask);
+  const box = document.getElementById('perm-presets');
+  box.innerHTML = '';
+  for (const [k, pr] of Object.entries(p.presets || {})) {
+    const b = document.createElement('button');
+    b.className = 'btn btn-ghost'; b.textContent = pr.label;
+    b.onclick = () => { set('perm-uid', pr.uid); set('perm-gid', pr.gid); set('perm-umask', pr.umask); };
+    box.appendChild(b);
+  }
+  const m = p.effectiveModes;
+  const src = {env: '来自环境变量 PUID/PGID/UMASK', ui: '来自此处保存的设置', none: '未配置'}[p.source];
+  document.getElementById('perm-info').textContent =
+    (p.enabled ? `当前生效:${p.uid ?? '-'}:${p.gid ?? '-'},文件 ${m.file} / 文件夹 ${m.dir}(${src})。` : '当前未启用(' + src + ')。') +
+    (p.enabled && !p.isRoot ? ' ⚠ 容器未以 root 运行,无法更改属主,仅应用权限位。' : '') +
+    ' UMASK 示例:000 → 666/777(Unraid 常用),022 → 644/755,002 → 664/775。';
+}
+async function fetchPerms() { try { renderPerms(await api('GET', '/perms')); } catch {} }
+async function savePerms() {
+  const g = id => document.getElementById(id).value.trim();
+  const r = await api('PUT', '/perms', { uid: g('perm-uid'), gid: g('perm-gid'), umask: g('perm-umask') });
+  if (r.error) { toast('❌ ' + r.error, true); return; }
+  renderPerms(r); toast('✅ 权限设置已保存');
+}
+async function resetPerms() { renderPerms(await api('DELETE', '/perms')); toast('已恢复默认'); }
 
 // ── Dashboard ─────────────────────────────────────────────────
 async function initDash() {

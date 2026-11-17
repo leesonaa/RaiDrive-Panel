@@ -147,7 +147,7 @@ function defaultDetect() {
   try { return detectVolumes(fs.readFileSync('/proc/self/mountinfo', 'utf8')); } catch { return []; }
 }
 
-function createFsApi({ broadcast, getMounts, roots: baseRoots, detect = null, rsyncBin = 'rsync' }) {
+function createFsApi({ broadcast, getMounts, roots: baseRoots, detect = null, rsyncBin = 'rsync', perms = require('./perms').createPerms() }) {
   const tasks = new Map();
   const emit = ev => { try { broadcast({ type: 'xfer', ...ev }); } catch { /* no listeners */ } };
 
@@ -256,6 +256,7 @@ function createFsApi({ broadcast, getMounts, roots: baseRoots, detect = null, rs
     try { await fsp.mkdir(abs); } catch (e) {
       throw new HttpError(e.code === 'EEXIST' ? 409 : e.code === 'ENOENT' ? 404 : 500, `cannot create ${abs}: ${e.code || e.message}`);
     }
+    if (!mountOwner(abs, await mountsStrict())) await perms.applyOne(abs, true);
     return { path: abs };
   }
 
@@ -403,7 +404,9 @@ function createFsApi({ broadcast, getMounts, roots: baseRoots, detect = null, rs
         } catch { /* EXDEV or unsupported (FUSE): fall back to rsync */ }
       }
 
-      const args = ['--no-perms', '--no-owner', '--no-group', `--modify-window=${MTIME_WINDOW}`,
+      // Ownership/mode policy only applies to local destinations; cloud mounts have no uid/gid to set.
+      const permArgs = toMount ? ['--no-perms', '--no-owner', '--no-group'] : perms.rsyncArgs();
+      const args = [...permArgs, `--modify-window=${MTIME_WINDOW}`,
         '--info=progress2,name1', '--no-inc-recursive', toMount ? '--inplace' : '--partial'];
       if (task.op === 'move') args.push('--remove-source-files');
       if (it.isDir) args.push('-rlt', it.src.replace(/\/+$/, '') + '/', it.target.replace(/\/+$/, '') + '/');

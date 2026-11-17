@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { createSyncManager } = require('./sync');
+const { createPerms } = require('./perms');
 const { createFsApi, defaultRoots, defaultDetect } = require('./fs-api');
 
 let cron = null;
@@ -516,14 +517,25 @@ async function getMountsCached() {
 }
 const invalidateMounts = () => { mountsCache.t = 0; };
 // An explicit FS_ROOTS is a strict allowlist; without it, volumes mapped into the container are detected.
+// Ownership policy (PUID/PGID/UMASK env, overridable from the UI) for files written to local paths.
+const permsDataDir = process.env.SYNC_DATA_DIR || '/etc/raidrive/panel';
+const perms = createPerms({ file: path.join(permsDataDir, 'perms.json') });
+app.get('/api/perms', (req, res) => res.json(perms.get()));
+app.put('/api/perms', async (req, res) => {
+  try { res.json(await perms.set(req.body)); } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.delete('/api/perms', async (req, res) => res.json(await perms.reset()));
+
 createFsApi({
+  perms,
   broadcast, getMounts: getMountsCached, roots: defaultRoots(),
   detect: process.env.FS_ROOTS ? null : defaultDetect,
 }).registerRoutes(app);
 
 // ── File sync (see sync.js) ──────────────────────────────
 const sync = createSyncManager({
-  dataDir: process.env.SYNC_DATA_DIR || '/etc/raidrive/panel',
+  perms,
+  dataDir: permsDataDir,
   broadcast,
   cron,
   getMounts: async () => {
@@ -534,6 +546,6 @@ const sync = createSyncManager({
 });
 sync.registerRoutes(app);
 
-sync.init()
+perms.init().then(() => sync.init())
   .catch(e => console.error('[sync] init failed:', e.message))
   .finally(() => app.listen(PORT, () => console.log(`RaiDrive Panel on :${PORT}`)));

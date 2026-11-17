@@ -37,6 +37,11 @@ services:
       # The file manager can browse the RaiDrive mounts and every volume mapped into the container.
       # Setting FS_ROOTS turns that into a strict allowlist (colon-separated, container paths):
       # - FS_ROOTS=/mnt:/mnt2
+      # Owner/mode of files written to LOCAL folders (cloud mounts unaffected). Also editable in the UI (设置页).
+      # Unraid: 99/100/000    Synology: 1000/1000/022
+      # - PUID=99
+      # - PGID=100
+      # - UMASK=000
       # Strongly recommended: the panel can read, write and delete files.
       # - PANEL_USER=admin
       # - PANEL_PASSWORD=change-me
