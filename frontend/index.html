@@ -109,7 +109,7 @@
   .log-line.cmd{color:var(--accent)}.log-line.err-line{color:var(--warn)}.log-line.dim{color:var(--muted)}
 
   /* Toast */
-  #toasts{position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;gap:8px;z-index:999}
+  #toasts{position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;gap:8px;z-index:999;pointer-events:none}
   .toast{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:11px 15px;font-size:13px;max-width:360px;animation:toastIn .2s ease;box-shadow:0 8px 32px rgba(0,0,0,.4)}
   .toast.ok{border-left:3px solid var(--accent2)}.toast.err{border-left:3px solid var(--warn)}
   @keyframes toastIn{from{transform:translateX(30px);opacity:0}to{transform:translateX(0);opacity:1}}

@@ -24,6 +24,100 @@
   };
   const bookmarks = () => LS.get('bookmarks', []);
   const effOp = e => (e && e.shiftKey ? (op === 'copy' ? 'move' : 'copy') : op);
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  // Windows-style clipboard for copy/cut/paste between folders (and panes).
+  let clip = null;               // {dir, names, op: 'copy' | 'move'}
+  const isCut = (pane, name) => !!clip && clip.op === 'move' && clip.dir === pane.path && clip.names.includes(name);
+  function refreshCut() {
+    Object.values(panes).forEach(p => p.list.querySelectorAll('.fp-row')
+      .forEach(r => r.classList.toggle('cut', isCut(p, r.dataset.name))));
+  }
+
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; }
+    } catch { /* fall through to the legacy path */ }
+    // Plain-http origins (typical for a LAN panel) have no navigator.clipboard.
+    const prev = document.activeElement;
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { ok = false; }
+    ta.remove();
+    if (prev && prev.focus) prev.focus();
+    return ok;
+  }
+
+  // ── context menu ──
+  let menu = null;
+  function closeMenu() {
+    if (!menu) return;
+    menu.ac.abort();
+    menu.el.remove();
+    menu = null;
+  }
+
+  function showMenu(x, y, items) {
+    closeMenu();
+    const el = document.createElement('div');
+    el.className = 'ctx-menu';
+    el.setAttribute('role', 'menu');
+    const ac = new AbortController();
+    const live = [];             // enabled entries, in order
+    let fi = -1;
+    const setFocus = i => {
+      fi = i;
+      live.forEach((l, k) => l.el.classList.toggle('focus', k === i));
+    };
+    for (const it of items) {
+      if (it === 'sep') {
+        const sp = document.createElement('div');
+        sp.className = 'ctx-sep';
+        el.appendChild(sp);
+        continue;
+      }
+      const b = document.createElement('div');
+      b.className = 'ctx-item' + (it.disabled ? ' disabled' : '') + (it.danger ? ' danger' : '');
+      b.setAttribute('role', 'menuitem');
+      b.innerHTML = `<span>${esc(it.label)}</span>${it.hint ? `<span class="k">${esc(it.hint)}</span>` : ''}`;
+      if (it.title) b.title = it.title;
+      if (!it.disabled) {
+        const entry = { el: b, it };
+        live.push(entry);
+        b.addEventListener('mouseenter', () => setFocus(live.indexOf(entry)));
+        b.addEventListener('click', () => { closeMenu(); it.run(); });
+      }
+      el.appendChild(b);
+    }
+    el.style.left = '0px'; el.style.top = '0px'; el.style.visibility = 'hidden';
+    document.body.appendChild(el);
+    const w = el.offsetWidth, h = el.offsetHeight;
+    el.style.left = Math.max(4, Math.min(x, window.innerWidth - w - 4)) + 'px';
+    el.style.top = Math.max(4, Math.min(y, window.innerHeight - h - 4)) + 'px';
+    el.style.visibility = '';
+    menu = { el, ac };
+
+    const sig = { signal: ac.signal, capture: true };
+    document.addEventListener('mousedown', e => { if (!el.contains(e.target)) closeMenu(); }, sig);
+    document.addEventListener('contextmenu', e => { if (el.contains(e.target)) e.preventDefault(); else closeMenu(); }, sig);
+    document.addEventListener('scroll', e => { if (!el.contains(e.target)) closeMenu(); }, sig);
+    window.addEventListener('blur', closeMenu, { signal: ac.signal });
+    window.addEventListener('resize', closeMenu, { signal: ac.signal });
+    document.addEventListener('keydown', e => {
+      const stop = () => { e.preventDefault(); e.stopPropagation(); };
+      if (e.key === 'Escape' || e.key === 'Tab') { stop(); closeMenu(); }
+      else if (e.key === 'ArrowDown') { stop(); if (live.length) setFocus((fi + 1) % live.length); }
+      else if (e.key === 'ArrowUp') { stop(); if (live.length) setFocus(fi <= 0 ? live.length - 1 : fi - 1); }
+      else if (e.key === 'Enter' || e.key === ' ') {
+        stop();
+        if (fi >= 0) { const { it } = live[fi]; closeMenu(); it.run(); }
+      }
+    }, sig);
+  }
 
   // ── pane ────────────────────────────────────────────────────
 
@@ -34,6 +128,7 @@
       this.sel = new Set(); this.anchor = null;
       this.back = []; this.fwd = [];
       this.sortKey = 'name'; this.sortDir = 1; this.filter = '';
+      this.marquee = null; this.suppressClick = false; this.visCount = 0;
       this.build();
     }
 
@@ -94,6 +189,8 @@
       });
 
       const l = this.list;
+      l.addEventListener('mousedown', e => this.onMouseDown(e));
+      l.addEventListener('contextmenu', e => this.onContext(e));
       l.addEventListener('click', e => this.onClick(e));
       l.addEventListener('dblclick', e => this.onDblClick(e));
       l.addEventListener('keydown', e => this.onKey(e));
@@ -140,10 +237,12 @@
     reload() { return this.path ? this.load(this.path, { push: false, silent: true }) : Promise.resolve(); }
 
     render() {
+      if (this.marquee) this.marquee.cancel();
       const rows = this.visible();
+      this.visCount = rows.length;
       this.pathInput.value = this.path;
       this.list.innerHTML = rows.length ? rows.map(x => `
-        <div class="fp-row${this.sel.has(x.name) ? ' sel' : ''}" draggable="true" data-name="${esc(x.name)}" data-type="${x.type}">
+        <div class="fp-row${this.sel.has(x.name) ? ' sel' : ''}${isCut(this, x.name) ? ' cut' : ''}" draggable="true" data-name="${esc(x.name)}" data-type="${x.type}">
           <div class="fp-name"><i>${x.type === 'dir' ? '📁' : x.link ? '🔗' : '📄'}</i><b title="${esc(x.name)}">${esc(x.name)}</b></div>
           <div class="dim num">${x.type === 'file' ? fmtBytes(x.size) : ''}</div>
           <div class="dim">${fmtTime(x.mtime)}</div>
@@ -162,7 +261,7 @@
     }
 
     updateInfo(n) {
-      const total = n ?? this.visible().length;
+      const total = n ?? this.visCount;
       this.info.textContent = `${total} 项${this.truncated ? '（仅显示前 5000 项）' : ''}${this.sel.size ? ` · 已选 ${this.sel.size}` : ''}`;
     }
 
@@ -238,9 +337,13 @@
 
     // ── selection / keyboard ──
     onClick(e) {
+      if (this.suppressClick) { this.suppressClick = false; return; } // the click that ends a rubber-band drag
       const row = e.target.closest('.fp-row');
       setActive(this.id);
-      if (!row) { this.sel.clear(); this.paint(); return; }
+      if (!row) {
+        if (!(e.ctrlKey || e.metaKey || e.shiftKey)) { this.sel.clear(); this.paint(); }
+        return;
+      }
       const name = row.dataset.name;
       if (e.shiftKey && this.anchor) {
         const names = this.visible().map(x => x.name);
@@ -264,13 +367,203 @@
     onKey(e) {
       if (e.key === 'Delete') { e.preventDefault(); this.remove(); }
       else if (e.key === 'F2') { e.preventDefault(); this.rename(); }
-      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); this.visible().forEach(x => this.sel.add(x.name)); this.paint(); }
+      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); this.selectAll(); }
+      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') { e.preventDefault(); this.clipSet('copy'); }
+      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'x') { e.preventDefault(); this.clipSet('move'); }
+      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') { e.preventDefault(); this.paste(this.path); }
       else if (e.key === 'Backspace') { e.preventDefault(); this.act('up'); }
       else if (e.key === 'Escape') { this.sel.clear(); this.paint(); }
       else if (e.key === 'Enter' && this.sel.size === 1) {
         const x = this.entries.find(en => en.name === [...this.sel][0]);
         if (x && x.type === 'dir') this.load(joinPath(this.path, x.name));
       }
+    }
+
+    selectAll() { this.visible().forEach(x => this.sel.add(x.name)); this.paint(); }
+    invert() {
+      const next = new Set();
+      this.visible().forEach(x => { if (!this.sel.has(x.name)) next.add(x.name); });
+      this.sel = next;
+      this.paint();
+    }
+
+    // ── rubber-band selection ──
+    // Press on empty space (or on the size/date cells of an unselected row) and drag.
+    // Grabbing an item's icon/name, or any part of an already-selected row, drags the files instead.
+    onMouseDown(e) {
+      if (e.button !== 0) return;
+      const list = this.list;
+      if (e.target === list && (e.offsetX >= list.clientWidth || e.offsetY >= list.clientHeight)) return; // scrollbar
+      const row = e.target.closest('.fp-row');
+      if (row && (e.target.closest('.fp-name i, .fp-name b') || this.sel.has(row.dataset.name))) return;
+      e.preventDefault();          // no text selection, no native drag
+      list.focus();
+      setActive(this.id);
+      if (row) row.draggable = false;
+      this.startMarquee(e, row);
+    }
+
+    startMarquee(e, row) {
+      const list = this.list;
+      const toggle = e.ctrlKey || e.metaKey;
+      const additive = toggle || e.shiftKey;
+      const base = additive ? new Set(this.sel) : new Set();
+      const m = { cx: e.clientX, cy: e.clientY, active: false, raf: 0, box: null, rows: null, cancel: null };
+      const pt = () => {           // pointer in list content coordinates, clamped to the content
+        const r = list.getBoundingClientRect();
+        return [clamp(m.cx - r.left + list.scrollLeft, 0, list.scrollWidth),
+                clamp(m.cy - r.top + list.scrollTop, 0, list.scrollHeight)];
+      };
+      const [sx, sy] = pt();
+
+      const update = () => {
+        const [x, y] = pt();
+        const L = Math.min(sx, x), T = Math.min(sy, y), W = Math.abs(x - sx), H = Math.abs(y - sy);
+        m.box.style.cssText = `left:${L}px;top:${T}px;width:${W}px;height:${H}px`;
+        const hit = new Set();
+        for (const r of m.rows) if (r.bottom > T && r.top < T + H) hit.add(r.name);
+        let next;
+        if (toggle) { next = new Set(base); for (const n of hit) if (!next.delete(n)) next.add(n); }
+        else if (additive) next = new Set([...base, ...hit]);
+        else next = hit;
+        for (const r of m.rows) {
+          const on = next.has(r.name);
+          if (on !== r.on) { r.on = on; r.el.classList.toggle('sel', on); }
+        }
+        this.sel = next;
+      };
+
+      const tick = () => {         // scroll while the pointer is near the top/bottom edge
+        if (!m.active) return;
+        const r = list.getBoundingClientRect(), edge = 28;
+        let dy = 0;
+        if (m.cy < r.top + edge) dy = -Math.ceil((r.top + edge - m.cy) / 4) - 2;
+        else if (m.cy > r.bottom - edge) dy = Math.ceil((m.cy - (r.bottom - edge)) / 4) + 2;
+        if (dy) { list.scrollTop += clamp(dy, -40, 40); update(); }
+        m.raf = requestAnimationFrame(tick);
+      };
+
+      const activate = () => {
+        m.active = true;
+        m.box = document.createElement('div');
+        m.box.className = 'marquee';
+        list.appendChild(m.box);
+        m.rows = [...list.querySelectorAll('.fp-row')].map(el => ({
+          el, name: el.dataset.name, top: el.offsetTop, bottom: el.offsetTop + el.offsetHeight,
+          on: this.sel.has(el.dataset.name),
+        }));
+        tick();
+      };
+
+      const onMove = ev => {
+        if (!(ev.buttons & 1)) { finish(false); return; }     // button released outside the window
+        m.cx = ev.clientX; m.cy = ev.clientY;
+        if (!m.active) {
+          if (Math.abs(ev.clientX - e.clientX) < 4 && Math.abs(ev.clientY - e.clientY) < 4) return;
+          activate();
+        }
+        update();
+      };
+      const onUp = () => finish(false);
+      const finish = cancelled => {
+        document.removeEventListener('mousemove', onMove, true);
+        document.removeEventListener('mouseup', onUp, true);
+        cancelAnimationFrame(m.raf);
+        if (row) row.draggable = true;
+        if (m.box) m.box.remove();
+        const was = m.active;
+        m.active = false;
+        if (this.marquee === m) this.marquee = null;
+        if (was && !cancelled) {
+          this.anchor = [...this.sel][0] ?? null;
+          this.updateInfo();
+          this.suppressClick = true;                 // swallow the click that follows mouseup
+          setTimeout(() => { this.suppressClick = false; }, 0);
+        }
+      };
+      m.cancel = () => finish(true);
+      this.marquee = m;
+      document.addEventListener('mousemove', onMove, true);
+      document.addEventListener('mouseup', onUp, true);
+    }
+
+    // ── context menu & clipboard ──
+    onContext(e) {
+      e.preventDefault();
+      if (this.marquee) return;
+      setActive(this.id);
+      this.list.focus();
+      const row = e.target.closest('.fp-row');
+      if (row) {
+        const name = row.dataset.name;
+        // Like Explorer: right-clicking inside the selection keeps it, outside selects just that item.
+        if (!this.sel.has(name)) { this.sel = new Set([name]); this.anchor = name; this.paint(); }
+      } else if (this.sel.size) {
+        this.sel.clear(); this.paint();
+      }
+      showMenu(e.clientX, e.clientY, this.menuItems());
+    }
+
+    menuItems() {
+      const names = [...this.sel];
+      const here = n => joinPath(this.path, n);
+      const other = panes[this.id === 'L' ? 'R' : 'L'];
+      if (!names.length) {
+        return [
+          { label: '粘贴', hint: 'Ctrl+V', disabled: !clip, run: () => this.paste(this.path) },
+          'sep',
+          { label: '新建文件夹', run: () => this.mkdir() },
+          { label: '刷新', run: () => this.load(this.path, { push: false }) },
+          'sep',
+          { label: '全选', hint: 'Ctrl+A', run: () => this.selectAll() },
+          { label: '反选', run: () => this.invert() },
+          'sep',
+          { label: '复制当前路径', run: () => this.copyPaths([this.path]) },
+        ];
+      }
+      const one = names.length === 1 ? this.entries.find(x => x.name === names[0]) : null;
+      const isDir = !!one && one.type === 'dir';
+      const items = [];
+      if (isDir) items.push({ label: '打开', hint: 'Enter', run: () => this.load(here(one.name)) }, 'sep');
+      items.push(
+        { label: '复制到另一栏', title: other.path, disabled: !other.path,
+          run: () => doTransfer(names.map(here), other.path, 'copy') },
+        { label: '移动到另一栏', title: other.path, disabled: !other.path || other.path === this.path,
+          run: () => doTransfer(names.map(here), other.path, 'move') },
+        'sep',
+        { label: '复制', hint: 'Ctrl+C', run: () => this.clipSet('copy') },
+        { label: '剪切', hint: 'Ctrl+X', run: () => this.clipSet('move') },
+      );
+      if (isDir) items.push({ label: '粘贴到此文件夹', disabled: !clip, run: () => this.paste(here(one.name)) });
+      items.push(
+        'sep',
+        { label: '重命名', hint: 'F2', disabled: names.length !== 1, run: () => this.rename() },
+        { label: '删除', hint: 'Del', danger: true, run: () => this.remove() },
+        'sep',
+        { label: names.length > 1 ? '复制路径（多项）' : '复制路径', run: () => this.copyPaths(names.map(here)) },
+      );
+      return items;
+    }
+
+    clipSet(op) {
+      if (!this.sel.size) { toast('请先选中项目', true); return; }
+      clip = { dir: this.path, names: [...this.sel], op };
+      refreshCut();
+      toast(`${op === 'move' ? '✂️ 已剪切' : '📋 已复制'} ${clip.names.length} 项，到目标位置右键或按 Ctrl+V 粘贴`);
+    }
+
+    async paste(dest) {
+      if (!clip) { toast('剪贴板为空', true); return; }
+      if (!dest) return;
+      const c = clip;
+      if (c.op === 'move' && c.dir === dest) { toast('已经在该位置'); return; }
+      const started = await doTransfer(c.names.map(n => joinPath(c.dir, n)), dest, c.op);
+      if (started && c.op === 'move' && clip === c) { clip = null; refreshCut(); }
+    }
+
+    async copyPaths(paths) {
+      const ok = await copyText(paths.join('\n'));
+      toast(ok ? '📋 已复制路径' : '❌ 无法写入剪贴板', !ok);
     }
 
     // ── drag & drop ──
@@ -324,15 +617,16 @@
 
   // ── transfers ───────────────────────────────────────────────
 
+  // Resolves true once a transfer was accepted by the server, false if it was refused or cancelled.
   async function doTransfer(sources, destDir, opName, onConflict) {
     const r = await api('POST', '/fs/transfer', { sources, destDir, op: opName, onConflict });
     if (!r.ok && r.conflicts) {
       const choice = await conflictDialog(r.conflicts, destDir);
-      if (choice) doTransfer(sources, destDir, opName, choice);
-      return;
+      return choice ? doTransfer(sources, destDir, opName, choice) : false;
     }
-    if (!r.ok) { toast('❌ ' + r.output, true); return; }
+    if (!r.ok) { toast('❌ ' + r.output, true); return false; }
     if (r.count === 0) { toast('没有需要传输的项目'); refreshAll(); }
+    return true;
   }
 
   function conflictDialog(names, destDir) {
