@@ -104,9 +104,31 @@
   .detail-val.masked{color:var(--muted)}
 
   /* Log */
-  .log-stream{background:#010409;border:1px solid var(--border);border-radius:8px;padding:13px 15px;font-family:var(--mono);font-size:11px;color:#7ee787;height:420px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
-  .log-line{margin-bottom:2px;line-height:1.5}
-  .log-line.cmd{color:var(--accent)}.log-line.err-line{color:var(--warn)}.log-line.dim{color:var(--muted)}
+  .log-stream{background:#010409;border:1px solid var(--border);border-radius:8px;padding:6px 0;font-family:var(--mono);font-size:12px;color:var(--text);height:calc(100vh - 250px);min-height:320px;overflow-y:auto}
+  .log-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px;font-size:12px;color:var(--muted)}
+  .log-bar select,.log-bar input[type=text]{width:auto;padding:5px 9px;font-size:12px}
+  .log-bar input[type=checkbox]{width:auto;margin:0}
+  .log-bar label{white-space:nowrap;display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+  .log-bar .cnt{margin-left:auto}
+  .lg{display:grid;grid-template-columns:64px 46px 74px minmax(0,1fr);gap:8px;padding:2px 12px;line-height:1.55;border-left:2px solid transparent;align-items:baseline}
+  .lg:hover{background:rgba(255,255,255,.035)}
+  .lg .t{color:var(--muted)}
+  .lg .lv{font-weight:700;font-size:11px}
+  .lg .src{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lg .m{white-space:pre-wrap;word-break:break-word}
+  .lg.lv-info .lv{color:#58a6ff}.lg.lv-debug .lv,.lg.lv-debug .m{color:var(--muted)}
+  .lg.lv-warn{border-left-color:#d29922;background:rgba(210,153,34,.07)}.lg.lv-warn .lv{color:#d29922}
+  .lg.lv-error{border-left-color:#f85149;background:rgba(248,81,73,.09)}.lg.lv-error .lv,.lg.lv-error .m{color:#ff7b72}
+  .lg.k-cmd .m{color:var(--text)}
+  .lg.k-sys .m{color:var(--muted);font-style:italic}
+  .lg details summary{cursor:pointer;list-style:none}
+  .lg details summary::-webkit-details-marker{display:none}
+  .lg details summary:before{content:"▸ ";color:var(--muted)}.lg details[open] summary:before{content:"▾ "}
+  .lg details pre{margin:4px 0 4px 14px;padding:8px 10px;background:rgba(255,255,255,.04);border-radius:6px;white-space:pre-wrap;word-break:break-word;color:#c9d1d9;font:inherit}
+  .lg .cmdc{color:var(--accent)}
+  .lg .okb{color:#3fb950}.lg .badb{color:#f85149}
+  .lg.hide,.log-stream.no-noise .lg.noise{display:none}
+  @media(max-width:700px){.lg{grid-template-columns:56px 40px minmax(0,1fr)}.lg .src{display:none}}
 
   /* Toast */
   #toasts{position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;gap:8px;z-index:999;pointer-events:none}
@@ -398,13 +420,21 @@
     <!-- Logs -->
     <div class="page" id="page-logs">
       <div class="page-header">
-        <div><h1>实时日志</h1><p>命令执行记录 + 守护进程日志流</p></div>
+        <div><h1>实时日志</h1><p>面板执行的命令 + 守护进程日志</p></div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-ghost btn-sm" onclick="clearLog()">清空</button>
           <button class="btn btn-ghost btn-sm" onclick="loadDaemonLog()">读取守护日志</button>
         </div>
       </div>
-      <div class="log-stream" id="logbox"><div class="log-line dim">等待日志...</div></div>
+      <div class="log-bar">
+        <select id="lg-level" onchange="applyLogFilter()"><option value="0">全部级别</option><option value="2">警告及以上</option><option value="3">仅错误</option></select>
+        <select id="lg-kind" onchange="applyLogFilter()"><option value="">全部来源</option><option value="cmd">面板命令</option><option value="daemon">守护进程</option></select>
+        <input type="text" id="lg-q" placeholder="搜索…" oninput="applyLogFilter()">
+        <label><input type="checkbox" id="lg-noise" onchange="applyLogFilter()"> 显示客户端连接记录</label>
+        <label><input type="checkbox" id="lg-follow" checked> 自动滚动</label>
+        <span class="cnt" id="lg-cnt"></span>
+      </div>
+      <div class="log-stream no-noise" id="logbox"></div>
     </div>
 
     <!-- Settings -->
@@ -761,24 +791,86 @@ async function doSignout() {
 
 // ── Logs ──────────────────────────────────────────────────────
 const logbox = document.getElementById('logbox');
-function appendLog(cls, txt) {
+const LV = { debug: 0, info: 1, warn: 2, warning: 2, error: 3, err: 3, fatal: 3, critical: 3 };
+const LV_LABEL = { 0: '调试', 1: '信息', 2: '警告', 3: '错误' };
+const LOG_MAX = 1500;
+// Daemon chatter: every raidrivecli call connects/logs in/disconnects from the daemon.
+const NOISE_RE = /CLIENT (CONNECTED|DISCONNECTED|LOGIN SUCCESS)/i;
+const hhmmss = d => d.toTimeString().slice(0, 8);
+
+function logRow({ time, level = 1, src = '', kind = 'sys', noise = false, html, text }) {
   const d = document.createElement('div');
-  d.className = 'log-line ' + cls;
-  d.textContent = `[${new Date().toLocaleTimeString()}] ${txt}`;
+  d.className = `lg lv-${['debug','info','warn','error'][level]} k-${kind}` + (noise ? ' noise' : '');
+  d.dataset.lv = level; d.dataset.kind = kind;
+  d.innerHTML = `<span class="t">${esc(time || hhmmss(new Date()))}</span><span class="lv">${LV_LABEL[level]}</span><span class="src">${esc(src)}</span><span class="m"></span>`;
+  const m = d.querySelector('.m');
+  if (html) m.innerHTML = html; else m.textContent = text;
+  d.dataset.text = (m.textContent || '').toLowerCase();
   logbox.appendChild(d);
-  logbox.scrollTop = logbox.scrollHeight;
+  while (logbox.childElementCount > LOG_MAX) logbox.firstChild.remove();
+  if (!matchLog(d)) d.classList.add('hide');
+  if (document.getElementById('lg-follow').checked) logbox.scrollTop = logbox.scrollHeight;
+  updateLogCount();
 }
-function clearLog() { logbox.innerHTML = ''; appendLog('dim','日志已清空'); }
+function appendLog(cls, txt) { logRow({ text: txt, kind: 'sys', level: cls === 'err-line' ? 3 : 1 }); } // legacy helper
+
+// "[06:32:02] 2026-11-24 06:32:02.004 [INFO] CS : CLIENT CONNECTED : 8 : 1/10"
+const DAEMON_RE = /^(?:\[\d\d:\d\d:\d\d\]\s*)?(?:\d{4}-\d\d-\d\d\s+)?(\d\d:\d\d:\d\d)(?:\.\d+)?\s*\[(\w+)\]\s*(.*)$/;
+function addDaemonLine(line) {
+  line = line.replace(/\r/g, '').trim();
+  if (!line) return;
+  const m = line.match(DAEMON_RE);
+  if (!m) { logRow({ text: line, kind: 'daemon', level: /error|fail/i.test(line) ? 3 : 1, src: '守护进程' }); return; }
+  let [, time, lvl, rest] = m;
+  const level = LV[lvl.toLowerCase()] ?? 1;
+  let src = '守护进程';
+  const sm = rest.match(/^([A-Za-z][\w.]*)\s*:\s+(.*)$/);
+  if (sm) { src = sm[1]; rest = sm[2]; }
+  rest = rest.replace(/\s*:\s*$/, '').replace(/\s+:\s+/g, ' · ');
+  logRow({ time, level, src, kind: 'daemon', text: rest, noise: NOISE_RE.test(line) });
+}
+function addCmdEntry(d) {
+  const lines = (d.output || '').split('\n').filter(l => l.trim());
+  const body = lines.length
+    ? `<details${d.ok ? '' : ' open'}><summary><span class="cmdc">${esc(d.cmd)}</span> <span class="${d.ok ? 'okb' : 'badb'}">${d.ok ? '✓ 成功' : '✗ 失败'}</span> <span style="color:var(--muted)">${lines.length > 1 ? `(${lines.length} 行输出)` : ''}</span>${lines.length === 1 && d.ok ? ' — ' + esc(lines[0]) : ''}</summary>${lines.length > 1 || !d.ok ? `<pre>${esc(d.output)}</pre>` : ''}</details>`
+    : `<span class="cmdc">${esc(d.cmd)}</span> <span class="${d.ok ? 'okb' : 'badb'}">${d.ok ? '✓ 成功' : '✗ 失败'}</span>`;
+  logRow({ kind: 'cmd', src: '面板命令', level: d.ok ? 1 : 3, html: body });
+  // the summary text is searchable too
+}
+function matchLog(d) {
+  if (+d.dataset.lv < +document.getElementById('lg-level').value) return false;
+  const k = document.getElementById('lg-kind').value;
+  if (k && d.dataset.kind !== k) return false;
+  const q = document.getElementById('lg-q').value.trim().toLowerCase();
+  return !q || d.dataset.text.includes(q);
+}
+function applyLogFilter() {
+  logbox.classList.toggle('no-noise', !document.getElementById('lg-noise').checked);
+  for (const d of logbox.children) d.classList.toggle('hide', !matchLog(d));
+  updateLogCount();
+}
+function updateLogCount() {
+  const showNoise = document.getElementById('lg-noise').checked;
+  let shown = 0, hiddenNoise = 0;
+  for (const d of logbox.children) {
+    if (d.classList.contains('hide')) continue;
+    if (d.classList.contains('noise') && !showNoise) { hiddenNoise++; continue; }
+    shown++;
+  }
+  document.getElementById('lg-cnt').textContent = `${shown} 条` + (hiddenNoise ? ` · 已隐藏 ${hiddenNoise} 条连接记录` : '');
+}
+function clearLog() { logbox.innerHTML = ''; logRow({ kind: 'sys', text: '日志已清空' }); }
 async function loadDaemonLog() {
   const r = await api('GET', '/daemon-logs');
-  appendLog('cmd','──── Daemon Log ────');
-  r.output.split('\n').forEach(l => appendLog('', l));
+  logRow({ kind: 'sys', text: '──── 以下为守护进程日志(最近 200 行)────' });
+  r.output.split('\n').forEach(addDaemonLine);
 }
+logRow({ kind: 'sys', text: '等待日志…' });
 const es = new EventSource('/api/logs');
 es.onmessage = e => {
   const d = JSON.parse(e.data);
-  if (d.type === 'cmd') appendLog(d.ok ? 'cmd' : 'err-line', `$ ${d.cmd}\n${d.output}`);
-  if (d.type === 'log') appendLog('', d.msg);
+  if (d.type === 'cmd') addCmdEntry(d);
+  if (d.type === 'log') d.msg.split('\n').forEach(addDaemonLine);
   if (d.type === 'sync') onSyncEvent(d);
   if (d.type === 'xfer' && window.onXferEvent) onXferEvent(d);
 };
@@ -904,8 +996,10 @@ async function syncDelete(id) {
 function appendSyncLog(l) {
   const box = document.getElementById('sync-log');
   const d = document.createElement('div');
-  d.className = 'log-line' + (l.level === 'error' ? ' err-line' : l.level === 'warn' ? ' dim' : '');
-  d.textContent = `[${new Date(l.ts).toLocaleTimeString()}] ${l.msg}`;
+  const lv = LV[String(l.level || 'info').toLowerCase()] ?? 1;
+  d.className = `lg lv-${['debug','info','warn','error'][lv]}`;
+  d.innerHTML = `<span class="t">${esc(new Date(l.ts).toTimeString().slice(0, 8))}</span><span class="lv">${LV_LABEL[lv]}</span><span class="src">同步</span><span class="m"></span>`;
+  d.querySelector('.m').textContent = l.msg;
   box.appendChild(d);
   while (box.childElementCount > 1000) box.firstChild.remove();
   box.scrollTop = box.scrollHeight;
