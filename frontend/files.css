@@ -62,3 +62,44 @@
 .ctx-item.disabled{opacity:.4}
 .ctx-item .k{color:var(--muted);font-size:11px;font-family:var(--mono)}
 .ctx-sep{height:1px;margin:4px 6px;background:var(--border)}
+
+/* ── Modern refresh ─────────────────────────────────────────── */
+.f-panes{gap:16px}
+.fpane{position:relative;border-radius:14px;background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,0) 120px),var(--surface);box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 8px 24px rgba(0,0,0,.25);transition:border-color .15s,box-shadow .15s}
+.fpane.active-pane{border-color:rgba(88,166,255,.55);box-shadow:0 0 0 1px rgba(88,166,255,.25),0 8px 28px rgba(0,0,0,.3)}
+.fp-head{padding:10px 10px 8px;border-bottom:0;gap:6px}
+.fp-title{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);padding:0 6px 0 4px}
+.fp-loc{border-radius:8px;background:rgba(255,255,255,.04);border-color:transparent;max-width:130px}
+.fp-loc:hover{background:rgba(255,255,255,.08)}
+.ib{display:inline-flex;align-items:center;justify-content:center;border-radius:8px;width:30px;height:30px}
+.ib svg{width:16px;height:16px}
+.ib.on{color:#e3b341}
+.fp-pathbar{order:10;flex:1 1 100%;min-width:0;display:flex;align-items:center;gap:2px;background:rgba(255,255,255,.04);border-radius:10px;padding:0 2px 0 4px;height:34px;border:1px solid transparent}
+.fp-pathbar:hover,.fp-pathbar.editing{background:rgba(255,255,255,.07)}
+.fp-pathbar.editing{border-color:rgba(88,166,255,.5)}
+.fp-pathbar.editing .fp-crumbs,.fp-pathbar.editing .ib{display:none}
+.fp-crumbs{flex:1;min-width:0;display:flex;align-items:center;white-space:nowrap;overflow-x:auto;scrollbar-width:none;height:100%;cursor:text;font-size:12.5px}
+.fp-crumbs::-webkit-scrollbar{display:none}
+.crumb{padding:3px 7px;border-radius:6px;cursor:pointer;color:var(--text)}
+.crumb:hover:not(.off){background:rgba(255,255,255,.1)}
+.crumb.off{color:var(--muted);cursor:default}
+.crumb.cur{font-weight:600}
+.fp-crumbs .sep{font-style:normal;color:var(--muted);opacity:.6}
+.fp-pathbar .fp-path{flex:1;background:transparent;border:0;outline:0;padding:0 8px;height:100%;font-size:12.5px}
+.fp-cols{background:transparent;border-bottom:1px solid rgba(255,255,255,.06);font-size:11px;letter-spacing:.03em;text-transform:none}
+.fp-list{padding:4px 6px 56px}
+.fp-row{border-radius:8px;border-left:0;margin:1px 0;height:34px;transition:background .08s}
+.fp-row:hover{background:rgba(255,255,255,.055)}
+.fp-row.sel{background:rgba(88,166,255,.2);box-shadow:inset 0 0 0 1px rgba(88,166,255,.35)}
+.fp-name i{display:inline-flex;width:20px;height:20px}
+.fp-name .ico{display:block}
+.fp-foot{border-top:1px solid rgba(255,255,255,.06);padding:8px 12px}
+.fp-selbar{position:absolute;left:50%;bottom:52px;transform:translateX(-50%);z-index:6;display:flex;align-items:center;gap:6px;padding:6px 8px 6px 14px;border-radius:999px;background:rgba(22,27,34,.92);backdrop-filter:blur(10px);border:1px solid rgba(88,166,255,.4);box-shadow:0 10px 30px rgba(0,0,0,.5);white-space:nowrap;max-width:calc(100% - 20px);animation:selbar-in .14s ease-out}
+.fp-selbar[hidden]{display:none}
+.fp-selbar .n{font-size:12px;margin-right:4px;color:var(--accent)}
+.fp-selbar .btn{border-radius:999px;font-size:12px;padding:4px 11px}
+@keyframes selbar-in{from{opacity:0;transform:translate(-50%,6px)}to{opacity:1;transform:translate(-50%,0)}}
+.seg{border-radius:999px;border-color:rgba(255,255,255,.1)}
+.xfer{border-radius:10px}
+.xfer .bar{height:5px;border-radius:999px}
+.fp-cols{padding:0 18px}

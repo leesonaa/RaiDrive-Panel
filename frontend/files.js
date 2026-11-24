@@ -121,6 +121,34 @@
 
   // ── pane ────────────────────────────────────────────────────
 
+
+  // ── modern look: coloured type icons, breadcrumbs, selection bar ──
+  const SVG = (d, extra = '') => `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${extra}>${d}</svg>`;
+  const IC = {
+    back: SVG('<path d="M15 18l-6-6 6-6"/>'), fwd: SVG('<path d="M9 18l6-6-6-6"/>'), up: SVG('<path d="M12 19V5M5 12l7-7 7 7"/>'),
+    refresh: SVG('<path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/>'),
+    home: SVG('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>'),
+    filter: SVG('<path d="M3 5h18l-7 8v6l-4 2v-8z"/>'),
+    star: SVG('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>'),
+    close: SVG('<path d="M18 6L6 18M6 6l12 12"/>'),
+    pencil: SVG('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+  };
+  const EXT = {
+    video: 'mkv mp4 avi mov wmv flv ts m2ts rmvb webm iso m4v', audio: 'mp3 flac wav aac m4a ogg wma ape',
+    image: 'jpg jpeg png gif webp bmp heic svg tif tiff', archive: 'zip rar 7z tar gz bz2 xz tgz dmg pkg apk',
+    doc: 'pdf doc docx xls xlsx ppt pptx txt md epub rtf csv', sub: 'srt ass ssa vtt sub idx',
+    code: 'js ts json py sh yml yaml xml html css c cpp go java rs toml ini conf log',
+  };
+  const KIND = {}; for (const [k, v] of Object.entries(EXT)) v.split(' ').forEach(e => { KIND[e] = k; });
+  const KIND_COLOR = { video: '#a78bfa', audio: '#f472b6', image: '#4ade80', archive: '#fb923c', doc: '#60a5fa', sub: '#22d3ee', code: '#2dd4bf', file: '#8b949e' };
+  function fileIcon(x) {
+    if (x.type === 'dir') return `<svg class="ico" viewBox="0 0 24 24" width="20" height="20"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h3.6c.6 0 1.2.3 1.6.8L12 6.4h6.5A2.5 2.5 0 0 1 21 8.9v8.6a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" fill="#e3b341" opacity=".95"/><path d="M3 9.5h18" stroke="#00000030" stroke-width="1"/></svg>`;
+    if (x.link) return `<svg class="ico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#8b949e" stroke-width="2" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>`;
+    const ext = (x.name.split('.').pop() || '').toLowerCase();
+    const c = KIND_COLOR[(x.name.includes('.') && KIND[ext]) || 'file'];
+    return `<svg class="ico" viewBox="0 0 24 24" width="20" height="20"><path d="M6 3h8l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" fill="${c}" opacity=".9"/><path d="M14 3v5h5" fill="#ffffff55"/></svg>`;
+  }
+
   class Pane {
     constructor(id, title, defaultKey) {
       this.id = id; this.title = title; this.defaultKey = defaultKey;
@@ -139,21 +167,28 @@
         <div class="fp-head">
           <span class="fp-title">${esc(this.title)}</span>
           <select class="fp-loc" title="快速跳转"></select>
-          <button class="ib" data-act="back" title="后退">‹</button>
-          <button class="ib" data-act="fwd" title="前进">›</button>
-          <button class="ib" data-act="up" title="上一级">↑</button>
+          <button class="ib" data-act="back" title="后退">${IC.back}</button>
+          <button class="ib" data-act="fwd" title="前进">${IC.fwd}</button>
+          <button class="ib" data-act="up" title="上一级">${IC.up}</button>
           <span class="sp"></span>
-          <button class="ib" data-act="refresh" title="刷新">⟳</button>
-          <button class="ib" data-act="home" title="默认位置">⌂</button>
-          <button class="ib" data-act="filter" title="过滤">⏷</button>
-          <button class="ib" data-act="star" title="收藏当前目录">☆</button>
-          <input class="fp-path" spellcheck="false">
+          <button class="ib" data-act="refresh" title="刷新（挂载点为 OpenList 时同时刷新上游）">${IC.refresh}</button>
+          <button class="ib" data-act="home" title="默认位置">${IC.home}</button>
+          <button class="ib" data-act="filter" title="过滤">${IC.filter}</button>
+          <button class="ib" data-act="star" title="收藏当前目录">${IC.star}</button>
+          <div class="fp-pathbar"><div class="fp-crumbs" title="点击空白处可直接输入路径"></div><button class="ib" data-act="editpath" title="输入路径">${IC.pencil}</button><input class="fp-path" spellcheck="false" hidden></div>
         </div>
         <div class="fp-filter" hidden><input placeholder="按名称过滤…"></div>
         <div class="fp-cols">
           <span data-sort="name">名称</span><span class="num" data-sort="size">大小</span><span data-sort="mtime">修改时间</span>
         </div>
         <div class="fp-list" tabindex="0"></div>
+        <div class="fp-selbar" hidden>
+          <b class="n"></b>
+          <button class="btn btn-ghost" data-sel="copy">复制到另一栏</button>
+          <button class="btn btn-ghost" data-sel="move">移动到另一栏</button>
+          <button class="btn btn-danger" data-sel="del">删除</button>
+          <button class="ib" data-sel="clear" title="取消选择">${IC.close}</button>
+        </div>
         <div class="fp-foot">
           <span class="info"></span><span class="sp"></span>
           <button class="btn btn-ghost" data-act="mkdir">新建文件夹</button>
@@ -163,6 +198,8 @@
       this.el = el;
       this.list = el.querySelector('.fp-list');
       this.pathInput = el.querySelector('.fp-path');
+      this.crumbs = el.querySelector('.fp-crumbs');
+      this.selbar = el.querySelector('.fp-selbar');
       this.loc = el.querySelector('.fp-loc');
       this.filterWrap = el.querySelector('.fp-filter');
       this.filterInput = this.filterWrap.querySelector('input');
@@ -177,8 +214,22 @@
       });
       this.loc.addEventListener('change', () => { const p = this.loc.value; this.loc.selectedIndex = 0; if (p) this.load(p); });
       this.pathInput.addEventListener('keydown', e => {
-        if (e.key === 'Enter') this.load(this.pathInput.value.trim());
-        if (e.key === 'Escape') { this.pathInput.value = this.path; this.pathInput.blur(); }
+        if (e.key === 'Enter') { this.load(this.pathInput.value.trim()); this.editPath(false); }
+        if (e.key === 'Escape') { this.editPath(false); }
+      });
+      this.pathInput.addEventListener('blur', () => this.editPath(false));
+      this.crumbs.addEventListener('click', e => {
+        const c = e.target.closest('[data-p]');
+        if (c) { if (!c.classList.contains('off')) this.load(c.dataset.p); } else this.editPath(true);
+      });
+      this.selbar.addEventListener('click', e => {
+        const b = e.target.closest('[data-sel]'); if (!b || !this.sel.size) return;
+        const names = [...this.sel], here = n => joinPath(this.path, n);
+        const other = this === panes.L ? panes.R : panes.L;
+        if (b.dataset.sel === 'clear') { this.sel.clear(); this.paint(); }
+        else if (b.dataset.sel === 'del') this.remove();
+        else if (other.path) doTransfer(names.map(here), other.path, b.dataset.sel);
+        else toast('另一栏没有打开目录', true);
       });
       this.filterInput.addEventListener('input', () => {
         this.filter = this.filterInput.value.trim().toLowerCase();
@@ -239,6 +290,25 @@
       return true;
     }
 
+    editPath(on) {
+      this.pathInput.hidden = !on; this.crumbs.parentElement.classList.toggle('editing', on);
+      if (on) { this.pathInput.value = this.path; this.pathInput.focus(); this.pathInput.select(); }
+    }
+
+    renderCrumbs() {
+      const root = roots.filter(r => this.path === r.path || this.path.startsWith(r.path.replace(/\/+$/, '') + '/'))
+        .sort((a, b) => b.path.length - a.path.length)[0];
+      const parts = this.path.split('/').filter(Boolean);
+      let acc = '', html = '';
+      parts.forEach((seg, i) => {
+        acc += '/' + seg;
+        const off = !root || acc.length < root.path.length;
+        html += `${i ? '<i class="sep">/</i>' : ''}<span class="crumb${off ? ' off' : ''}${i === parts.length - 1 ? ' cur' : ''}" data-p="${esc(acc)}">${esc(seg)}</span>`;
+      });
+      this.crumbs.innerHTML = html || '<span class="crumb off">/</span>';
+      this.crumbs.scrollLeft = this.crumbs.scrollWidth;
+    }
+
     reload() { return this.path ? this.load(this.path, { push: false, silent: true }) : Promise.resolve(); }
 
     render() {
@@ -246,9 +316,10 @@
       const rows = this.visible();
       this.visCount = rows.length;
       this.pathInput.value = this.path;
+      this.renderCrumbs();
       this.list.innerHTML = rows.length ? rows.map(x => `
         <div class="fp-row${this.sel.has(x.name) ? ' sel' : ''}${isCut(this, x.name) ? ' cut' : ''}" draggable="true" data-name="${esc(x.name)}" data-type="${x.type}">
-          <div class="fp-name"><i>${x.type === 'dir' ? '📁' : x.link ? '🔗' : '📄'}</i><b title="${esc(x.name)}">${esc(x.name)}</b></div>
+          <div class="fp-name"><i>${fileIcon(x)}</i><b title="${esc(x.name)}">${esc(x.name)}</b></div>
           <div class="dim num">${x.type === 'file' ? fmtBytes(x.size) : ''}</div>
           <div class="dim">${fmtTime(x.mtime)}</div>
         </div>`).join('') : `<div class="fp-empty">${this.filter ? '没有匹配项' : '空目录'}</div>`;
@@ -261,13 +332,15 @@
       this.el.querySelector('[data-act="up"]').disabled = !this.parent;
       const star = this.el.querySelector('[data-act="star"]');
       const on = bookmarks().includes(this.path);
-      star.textContent = on ? '★' : '☆'; star.classList.toggle('on', on);
+      star.classList.toggle('on', on); star.querySelector('svg').setAttribute('fill', on ? 'currentColor' : 'none');
       this.updateInfo(rows.length);
     }
 
     updateInfo(n) {
       const total = n ?? this.visCount;
       this.info.textContent = `${total} 项${this.truncated ? '（仅显示前 5000 项）' : ''}${this.sel.size ? ` · 已选 ${this.sel.size}` : ''}`;
+      this.selbar.hidden = !this.sel.size;
+      this.selbar.querySelector('.n').textContent = `已选 ${this.sel.size} 项`;
     }
 
     paint() {
@@ -296,6 +369,7 @@
         case 'fwd': if (this.fwd.length) { const p = this.fwd.pop(); this.back.push(this.path); this.load(p, { push: false }); } break;
         case 'up': if (this.parent) this.load(this.parent); break;
         case 'refresh': this.load(this.path, { push: false, refresh: true }); break;
+        case 'editpath': this.editPath(true); break;
         case 'home': this.load(defaults[this.defaultKey]); break;
         case 'filter':
           this.filterWrap.hidden = !this.filterWrap.hidden;
@@ -518,7 +592,7 @@
           { label: '粘贴', hint: 'Ctrl+V', disabled: !clip, run: () => this.paste(this.path) },
           'sep',
           { label: '新建文件夹', run: () => this.mkdir() },
-          { label: '刷新', run: () => this.load(this.path, { push: false }) },
+          { label: '刷新', run: () => this.load(this.path, { push: false, refresh: true }) },
           'sep',
           { label: '全选', hint: 'Ctrl+A', run: () => this.selectAll() },
           { label: '反选', run: () => this.invert() },
