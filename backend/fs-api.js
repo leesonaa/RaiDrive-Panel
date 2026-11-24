@@ -219,11 +219,12 @@ function createFsApi({ broadcast, getMounts, roots: baseRoots, detect = null, rs
     // Manual refresh: ask the upstream (e.g. OpenList) to re-read its storage before listing.
     let upstreamInfo;
     const owner = mountOwner(abs, mounts);
-    if (refresh && upstream && owner && upstream.has(owner.label)) {
+    if (refresh && upstream && owner) {
       try {
         const rel = path.relative(path.resolve(owner.mountPath), abs).split(path.sep).join('/');
         upstreamInfo = await upstream.refresh(owner, rel);
-      } catch (e) { upstreamInfo = { error: e.message }; }
+        if (upstreamInfo && upstreamInfo.skipped) upstreamInfo = undefined;
+      } catch (e) { upstreamInfo = { error: e.message, label: owner.label }; }
     }
     let dirents;
     try {

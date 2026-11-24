@@ -11,9 +11,9 @@ const { createFsApi } = require('../fs-api');
 function fake(handler) {
   const calls = [];
   const fetchImpl = async (url, opt) => {
-    const body = JSON.parse(opt.body);
-    calls.push({ url, body, auth: opt.headers.Authorization });
-    const j = handler(url, body, opt.headers.Authorization);
+    const body = opt.body ? JSON.parse(opt.body) : {};
+    calls.push({ url, body, auth: opt.headers && opt.headers.Authorization });
+    const j = handler(url, body, opt.headers && opt.headers.Authorization);
     return { status: 200, json: async () => j };
   };
   return { calls, fetchImpl };
@@ -31,13 +31,18 @@ test('resolve: strips /dav, joins sub path, honours a sub-root remote', () => {
 test('refresh: logs in once, sends refresh:true, relogs on 401, surfaces errors', async () => {
   let logins = 0, expired = false;
   const f = fake((url, body, auth) => {
+    if (url.endsWith('/api/public/settings')) return { code: 200, data: {} };
     if (url.endsWith('/api/auth/login')) { logins++; return { code: 200, data: { token: 'T' + logins } }; }
     if (expired) { expired = false; return { code: 401, message: 'expired' }; }
     if (body.path === '/bad') return { code: 500, message: 'storage not found' };
     return { code: 200 };
   });
+  const plain = createUpstream({ fetchImpl: async () => ({ json: async () => ({ code: 404 }) }) });
+  assert.deepEqual(await plain.refresh(mount, 'x'), { skipped: true }); // not an OpenList server
+  assert.deepEqual(await createUpstream({ fetchImpl: async () => { throw new Error('down'); } }).refresh(mount, ''), { skipped: true });
   const u = createUpstream({ fetchImpl: f.fetchImpl });
-  assert.deepEqual(await u.refresh(mount, 'x'), { skipped: true });
+  const need = await u.refresh(mount, 'x'); // detected, but no credentials yet
+  assert.equal(need.needAuth, true); assert.equal(need.url, 'http://10.0.0.9:5244');
   await u.set('ol', { username: 'admin', password: 'pw' });
   assert.equal(u.list().ol.hasPassword, true);
   assert.equal(JSON.stringify(u.list()).includes('pw'), false, 'secrets never listed');
@@ -71,7 +76,7 @@ test('file manager: ?refresh calls the upstream for mount paths only, failures d
   const mnt = path.join(base, 'ol'), local = path.join(base, 'local');
   await fsp.mkdir(path.join(mnt, 'sub'), { recursive: true }); await fsp.mkdir(local);
   const seen = [];
-  const upstream = { has: l => l === 'ol', refresh: async (m, rel) => { seen.push(rel); if (rel === 'boom') throw new Error('nope'); return { refreshed: true }; } };
+  const upstream = { refresh: async (m, rel) => { if (m.label !== 'ol') return { skipped: true }; seen.push(rel); if (rel === 'boom') throw new Error('nope'); return { refreshed: true }; } };
   const api = createFsApi({ roots: [local], upstream, broadcast() {}, getMounts: async () => [{ label: 'ol', mountPath: mnt, state: 'Connected' }] });
   assert.equal((await api.listDir(path.join(mnt, 'sub'))).upstream, undefined);
   assert.deepEqual(seen, []);

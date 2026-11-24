@@ -107,7 +107,7 @@ Google Drive、OneDrive、Dropbox 等需要浏览器 OAuth 授权，在无头容
 ### 刷新与上游缓存
 
 - 面板对 `raidrivecli status/list` 做了合并和短时缓存（status 30 秒、list 10 秒，挂载/卸载/添加/删除会立即清除；各「刷新」按钮强制重读），打开页面不再反复拉起守护进程会话。
-- 挂载的是 OpenList / AList 的 WebDAV 时，目录列表来自 OpenList 自己的缓存。在「设置 → 上游刷新」为该挂载点填写 OpenList 账号密码（或 Token，地址默认取自挂载地址），之后在文件管理点 ⟳ 会先让 OpenList 重新读取当前目录再列出。账号需有写入权限；凭据保存在 `upstream.json`（权限 600）。API：`GET/PUT/DELETE /api/upstream[/:label]`、`POST /api/upstream/:label/test`。
+- 挂载的是 OpenList / AList 的 WebDAV 时，目录列表来自 OpenList 自己的缓存。无需单独配置：在文件管理里点 ⟳，面板会自动识别该挂载点的上游是 OpenList（地址就取自挂载地址），首次会弹窗询问一个有「写入」权限的账号（或 Token），之后点 ⟳ 就会先让 OpenList 重新读取当前目录再列出。凭据保存在 `upstream.json`（权限 600）；密码错误会再次弹窗。API：`GET/PUT/DELETE /api/upstream[/:label]`。
 
 ## 任务式同步
 

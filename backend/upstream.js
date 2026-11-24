@@ -73,10 +73,30 @@ function createUpstream({ file, fetchImpl = (...a) => fetch(...a) } = {}) {
     return j.data.token;
   }
 
-  // rel: path inside the mount ('' = mount root)
+  // Is this mount's WebDAV address an OpenList/AList server? (cached per label)
+  const detected = new Map();
+  async function detect(mount) {
+    if (detected.has(mount.label)) return detected.get(mount.label);
+    let ok = false;
+    try {
+      if (/^https?:\/\//i.test(mount.remote || '')) {
+        const r = await fetchImpl(new URL(mount.remote).origin + '/api/public/settings', { signal: AbortSignal.timeout(5000) });
+        const j = await r.json();
+        ok = j && j.code === 200 && typeof j.data === 'object';
+      }
+    } catch { /* not reachable / not OpenList */ }
+    detected.set(mount.label, ok);
+    return ok;
+  }
+
+  // rel: path inside the mount ('' = mount root).
+  // Returns {skipped} (not an OpenList mount), {needAuth} (credentials missing) or {refreshed}.
   async function refresh(mount, rel) {
     const c = cfg[mount.label];
-    if (!c) return { skipped: true };
+    if (!c && !(await detect(mount))) return { skipped: true };
+    if (!c || !(c.token || (c.username && c.password))) {
+      return { needAuth: true, label: mount.label, url: (c && c.url) || new URL(mount.remote).origin };
+    }
     const { base, apiPath } = resolve(c, mount, rel);
     const body = { path: apiPath, password: '', refresh: true, page: 1, per_page: 1 };
     let token = await login(mount.label, c, base);

@@ -229,8 +229,10 @@
       this.entries = r.entries; this.truncated = r.truncated;
       this.sel.clear(); this.anchor = null;
       LS.set('path' + this.id, this.path);
-      if (r.upstream && r.upstream.error) toast('⚠️ 上游刷新失败：' + r.upstream.error, true);
-      else if (r.upstream && r.upstream.refreshed) toast('已通知上游刷新');
+      const up = r.upstream;
+      if (up && up.needAuth) askUpstream(up);
+      else if (up && up.error) { toast('⚠️ 上游刷新失败：' + up.error, true); if (/login failed/i.test(up.error) && up.label) askUpstream(up); }
+      else if (up && up.refreshed) toast('已通知上游刷新');
       const keep = refresh ? this.list.scrollTop : 0;
       this.render();
       this.list.scrollTop = keep;
@@ -630,6 +632,35 @@
     if (!r.ok) { toast('❌ ' + r.output, true); return false; }
     if (r.count === 0) { toast('没有需要传输的项目'); refreshAll(); }
     return true;
+  }
+
+  // The mount's WebDAV server is OpenList/AList; refreshing it needs an account (asked once, then remembered).
+  function askUpstream(up) {
+    if (document.querySelector('.modal-bg[data-up]')) return;
+    const bg = document.createElement('div');
+    bg.className = 'modal-bg'; bg.dataset.up = '1';
+    bg.innerHTML = `<div class="modal">
+      <h3>刷新需要登录 OpenList</h3>
+      <p style="word-break:normal">这个挂载点的上游是 OpenList(${esc(up.url || '')})。填写一个有「写入」权限的账号后,点 ⟳ 就会先让 OpenList 重新读取目录。凭据只保存在本机配置里。</p>
+      <input data-f="u" placeholder="用户名" autocomplete="off" style="margin-bottom:8px">
+      <input data-f="p" type="password" placeholder="密码" autocomplete="new-password" style="margin-bottom:8px">
+      <input data-f="t" type="password" placeholder="或直接填 Token(可选)" autocomplete="off">
+      <div class="btns"><button class="btn btn-ghost" data-c="">暂不</button><button class="btn btn-primary" data-c="ok">保存并刷新</button></div></div>`;
+    const done = () => { bg.remove(); document.removeEventListener('keydown', onEsc); };
+    const onEsc = e => { if (e.key === 'Escape') done(); };
+    bg.addEventListener('click', async e => {
+      if (e.target === bg) return done();
+      const b = e.target.closest('[data-c]'); if (!b) return;
+      if (!b.dataset.c) return done();
+      const f = k => bg.querySelector(`[data-f=${k}]`).value;
+      if (!f('t').trim() && !(f('u').trim() && f('p'))) { toast('请填写用户名和密码,或 Token', true); return; }
+      const sv = await api('PUT', '/upstream/' + encodeURIComponent(up.label), { type: 'openlist', url: up.url || '', username: f('u'), password: f('p'), token: f('t') });
+      if (sv.error) { toast('❌ ' + sv.error, true); return; }
+      done();
+      Object.values(panes).forEach(p => p.path && p.load(p.path, { push: false, refresh: true }));
+    });
+    document.addEventListener('keydown', onEsc);
+    document.body.appendChild(bg);
   }
 
   function conflictDialog(names, destDir) {
