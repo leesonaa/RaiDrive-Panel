@@ -826,7 +826,7 @@
     roots = r.roots; defaults = r.defaults || {};
     Object.values(panes).forEach(p => p.fillLocations());
     if (!roots.length) {
-      host.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="emo">📂</div>没有可浏览的目录。请添加并挂载存储，或用环境变量 FS_ROOTS 指定容器内的本地目录。</div>';
+      host.innerHTML = '<div class="empty" style="grid-column:1/-1">没有可浏览的目录。请添加并挂载存储，或用环境变量 FS_ROOTS 指定容器内的本地目录。</div>';
       return;
     }
     for (const p of Object.values(panes)) {

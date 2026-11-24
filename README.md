@@ -17,7 +17,10 @@ raidrive-panel/
 │   ├── rsync-run.js     # rsync 进程与进度解析
 │   └── test/            # node --test，需要本机有 rsync
 └── frontend/
-    └── index.html       # 单页管理界面
+    ├── index.html       # 页面结构（顶部导航 + 各页面）
+    ├── app.css          # 设计令牌与全局样式（浅色/深色）
+    ├── app.js           # 概览、挂载、同步、日志、设置
+    ├── files.css / files.js  # 双栏文件管理
 ```
 
 ## 快速启动
