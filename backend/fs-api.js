@@ -147,7 +147,7 @@ function defaultDetect() {
   try { return detectVolumes(fs.readFileSync('/proc/self/mountinfo', 'utf8')); } catch { return []; }
 }
 
-function createFsApi({ broadcast, getMounts, roots: baseRoots, detect = null, rsyncBin = 'rsync', perms = require('./perms').createPerms(), upstream = null }) {
+function createFsApi({ broadcast, getMounts, roots: baseRoots, detect = null, rsyncBin = 'rsync', perms = require('./perms').createPerms() }) {
   const tasks = new Map();
   const emit = ev => { try { broadcast({ type: 'xfer', ...ev }); } catch { /* no listeners */ } };
 
@@ -211,21 +211,11 @@ function createFsApi({ broadcast, getMounts, roots: baseRoots, detect = null, rs
     return { roots: out, defaults: { local, remote: (upMount || dirs[0] || {}).path || local } };
   }
 
-  async function listDir(p, { refresh = false } = {}) {
+  async function listDir(p) {
     const mounts = await mountsLenient();
     const roots = await allowedRoots(mounts);
     const abs = await resolveAllowed(p, roots);
     assertMountUp(abs, mounts);
-    // Manual refresh: ask the upstream (e.g. OpenList) to re-read its storage before listing.
-    let upstreamInfo;
-    const owner = mountOwner(abs, mounts);
-    if (refresh && upstream && owner) {
-      try {
-        const rel = path.relative(path.resolve(owner.mountPath), abs).split(path.sep).join('/');
-        upstreamInfo = await upstream.refresh(owner, rel);
-        if (upstreamInfo && upstreamInfo.skipped) upstreamInfo = undefined;
-      } catch (e) { upstreamInfo = { error: e.message, label: owner.label }; }
-    }
     let dirents;
     try {
       dirents = await fsp.readdir(abs, { withFileTypes: true });
@@ -248,7 +238,7 @@ function createFsApi({ broadcast, getMounts, roots: baseRoots, detect = null, rs
     })).filter(Boolean);
     const parentDir = path.dirname(abs);
     const parent = parentDir !== abs && roots.some(r => isInside(r.path, parentDir)) ? parentDir : null;
-    return { path: abs, parent, entries, truncated, ...(upstreamInfo ? { upstream: upstreamInfo } : {}) };
+    return { path: abs, parent, entries, truncated };
   }
 
   // ── simple writes ──────────────────────────────────────────
@@ -473,7 +463,7 @@ function createFsApi({ broadcast, getMounts, roots: baseRoots, detect = null, rs
       }
     };
     app.get('/api/fs/roots', wrap(() => getRoots()));
-    app.get('/api/fs/list', wrap(req => listDir(req.query.path, { refresh: req.query.refresh === '1' })));
+    app.get('/api/fs/list', wrap(req => listDir(req.query.path)));
     app.post('/api/fs/mkdir', wrap(req => mkdir(req.body?.path)));
     app.post('/api/fs/rename', wrap(req => rename(req.body?.path, req.body?.newName)));
     app.post('/api/fs/delete', wrap(req => remove(req.body?.paths)));

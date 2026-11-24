@@ -5,7 +5,6 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { createSyncManager } = require('./sync');
 const { createPerms } = require('./perms');
-const { createUpstream } = require('./upstream');
 const { createFsApi, defaultRoots, defaultDetect } = require('./fs-api');
 
 let cron = null;
@@ -542,23 +541,8 @@ app.put('/api/perms', async (req, res) => {
 });
 app.delete('/api/perms', async (req, res) => res.json(await perms.reset()));
 
-const upstream = createUpstream({ file: path.join(permsDataDir, 'upstream.json') });
-app.get('/api/upstream', (req, res) => res.json(upstream.list()));
-app.put('/api/upstream/:label', async (req, res) => {
-  try { res.json(await upstream.set(req.params.label, req.body || {})); } catch (e) { res.status(400).json({ error: e.message }); }
-});
-app.delete('/api/upstream/:label', async (req, res) => { await upstream.remove(req.params.label); res.json({ ok: true }); });
-// Dry-run of the root refresh so credentials/URL problems show up in the UI.
-app.post('/api/upstream/:label/test', async (req, res) => {
-  try {
-    const m = (await getMountsCached()).find(x => x.label === req.params.label);
-    if (!m) return res.status(404).json({ ok: false, error: 'mount not found' });
-    res.json({ ok: true, ...(await upstream.refresh(m, '')) });
-  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
-});
-
 createFsApi({
-  perms, upstream,
+  perms,
   broadcast, getMounts: getMountsCached, roots: defaultRoots(),
   detect: process.env.FS_ROOTS ? null : defaultDetect,
 }).registerRoutes(app);
@@ -577,6 +561,6 @@ const sync = createSyncManager({
 });
 sync.registerRoutes(app);
 
-Promise.all([perms.init(), upstream.init()]).then(() => sync.init())
+perms.init().then(() => sync.init())
   .catch(e => console.error('[sync] init failed:', e.message))
   .finally(() => app.listen(PORT, () => console.log(`RaiDrive Panel on :${PORT}`)));
