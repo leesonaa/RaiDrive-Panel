@@ -216,9 +216,9 @@
         });
     }
 
-    async load(path, { push = true, silent = false } = {}) {
+    async load(path, { push = true, silent = false, refresh = false } = {}) {
       if (!path) return false;
-      const r = await api('GET', '/fs/list?path=' + encodeURIComponent(path));
+      const r = await api('GET', '/fs/list?path=' + encodeURIComponent(path) + (refresh ? '&refresh=1' : ''));
       if (!r.ok) {
         if (!silent) toast('❌ ' + r.output, true);
         this.pathInput.value = this.path;
@@ -229,8 +229,11 @@
       this.entries = r.entries; this.truncated = r.truncated;
       this.sel.clear(); this.anchor = null;
       LS.set('path' + this.id, this.path);
+      if (r.upstream && r.upstream.error) toast('⚠️ 上游刷新失败：' + r.upstream.error, true);
+      else if (r.upstream && r.upstream.refreshed) toast('已通知上游刷新');
+      const keep = refresh ? this.list.scrollTop : 0;
       this.render();
-      this.list.scrollTop = 0;
+      this.list.scrollTop = keep;
       return true;
     }
 
@@ -290,7 +293,7 @@
         case 'back': if (this.back.length) { const p = this.back.pop(); this.fwd.push(this.path); this.load(p, { push: false }); } break;
         case 'fwd': if (this.fwd.length) { const p = this.fwd.pop(); this.back.push(this.path); this.load(p, { push: false }); } break;
         case 'up': if (this.parent) this.load(this.parent); break;
-        case 'refresh': this.load(this.path, { push: false }); break;
+        case 'refresh': this.load(this.path, { push: false, refresh: true }); break;
         case 'home': this.load(defaults[this.defaultKey]); break;
         case 'filter':
           this.filterWrap.hidden = !this.filterWrap.hidden;
@@ -698,7 +701,14 @@
       if (!ok && (d.error || firstErr)) x.title.title = d.error || firstErr.error;
       toast(ok ? '✅ 传输完成' : `${d.status === 'cancelled' ? '⏹' : '⚠️'} 传输${ST[d.status] || d.status}${d.error || firstErr ? '：' + (d.error || firstErr.error) : ''}`, d.status === 'failed');
       refreshAll();
-      if (ok) setTimeout(() => { x.el.remove(); xfers.delete(d.id); }, 10000);
+      // Finished rows clean themselves up; failures linger longer and can be dismissed.
+      const drop = () => { x.el.remove(); xfers.delete(d.id); };
+      if (!ok && d.status !== 'cancelled') {
+        const b = document.createElement('button');
+        b.className = 'btn btn-ghost btn-sm'; b.textContent = '×'; b.title = '关闭'; b.onclick = drop;
+        x.el.querySelector('.xfer-top').appendChild(b);
+      }
+      setTimeout(drop, ok ? 10000 : d.status === 'cancelled' ? 3000 : 30000);
     }
   }
 

@@ -5,6 +5,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { createSyncManager } = require('./sync');
 const { createPerms } = require('./perms');
+const { createUpstream } = require('./upstream');
 const { createFsApi, defaultRoots, defaultDetect } = require('./fs-api');
 
 let cron = null;
@@ -73,6 +74,22 @@ function pushOpt(args, name, value) {
   args.push(`${name}=${value}`);
 }
 
+// Every raidrivecli call opens (and logs) a fresh daemon session, so identical calls are
+// coalesced and cached briefly. ?fresh=1 (the refresh buttons) and any mutation bypass/clear it.
+const cliCache = new Map(); // key -> { t, p }
+function cliCached(key, ttl, fn, fresh = false) {
+  const hit = cliCache.get(key);
+  if (hit && !fresh && Date.now() - hit.t < ttl) return hit.p;
+  const p = fn();
+  const entry = { t: Date.now(), p };
+  cliCache.set(key, entry);
+  p.then(r => { if (r && r.ok === false && cliCache.get(key) === entry) cliCache.delete(key); },
+         () => { if (cliCache.get(key) === entry) cliCache.delete(key); });
+  return p;
+}
+const invalidateCli = () => cliCache.clear();
+const isFresh = req => req.query.fresh === '1' || req.query.fresh === 'true';
+
 // ── GET /api/status ─────────────────────────────────────────
 // Output format:
 //   Version : 2024.8.15
@@ -80,7 +97,7 @@ function pushOpt(args, name, value) {
 //   Subscription : RaiDrive/Professional/...
 //   Total mountpoints : 1
 app.get('/api/status', async (req, res) => {
-  const result = await runCli('status');
+  const result = await cliCached('status', 30000, () => runCli('status'), isFresh(req));
   // Parse into key-value map for frontend
   const kv = {};
   for (const line of result.output.split('\n')) {
@@ -102,7 +119,7 @@ app.get('/api/list', async (req, res) => {
   if (storage) args.push('--storage', String(storage));
   if (sort) args.push('--sort', String(sort));
 
-  const result = await runCli(args);
+  const result = await cliCached('list:' + args.join('\0'), 10000, () => runCli(args), isFresh(req));
   const mounts = parseList(result.output);
   res.json({ ...result, mounts });
 });
@@ -411,6 +428,7 @@ app.post('/api/add', async (req, res) => {
   pushOpt(args, '--bandwidth-upload', bandwidthUp);
 
   const result = await runCli(args);
+  invalidateCli();
   res.json(result);
 });
 
@@ -461,6 +479,7 @@ app.delete('/api/remove', async (req, res) => {
     }
   }
 
+  invalidateCli();
   res.json(result);
 });
 
@@ -507,15 +526,12 @@ app.get('/api/daemon-logs', (req, res) => {
 });
 
 // ── File manager (see fs-api.js) ─────────────────────────
-let mountsCache = { t: 0, v: null };
 async function getMountsCached() {
-  if (mountsCache.v && Date.now() - mountsCache.t < 3000) return mountsCache.v;
-  const r = await runCli(['list'], { quiet: true });
+  const r = await cliCached('list:list', 10000, () => runCli(['list'], { quiet: true }));
   if (!r.ok) throw new Error(r.output || 'raidrivecli list failed');
-  mountsCache = { t: Date.now(), v: parseList(r.output) };
-  return mountsCache.v;
+  return parseList(r.output);
 }
-const invalidateMounts = () => { mountsCache.t = 0; };
+const invalidateMounts = invalidateCli;
 // An explicit FS_ROOTS is a strict allowlist; without it, volumes mapped into the container are detected.
 // Ownership policy (PUID/PGID/UMASK env, overridable from the UI) for files written to local paths.
 const permsDataDir = process.env.SYNC_DATA_DIR || '/etc/raidrive/panel';
@@ -526,8 +542,23 @@ app.put('/api/perms', async (req, res) => {
 });
 app.delete('/api/perms', async (req, res) => res.json(await perms.reset()));
 
+const upstream = createUpstream({ file: path.join(permsDataDir, 'upstream.json') });
+app.get('/api/upstream', (req, res) => res.json(upstream.list()));
+app.put('/api/upstream/:label', async (req, res) => {
+  try { res.json(await upstream.set(req.params.label, req.body || {})); } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.delete('/api/upstream/:label', async (req, res) => { await upstream.remove(req.params.label); res.json({ ok: true }); });
+// Dry-run of the root refresh so credentials/URL problems show up in the UI.
+app.post('/api/upstream/:label/test', async (req, res) => {
+  try {
+    const m = (await getMountsCached()).find(x => x.label === req.params.label);
+    if (!m) return res.status(404).json({ ok: false, error: 'mount not found' });
+    res.json({ ok: true, ...(await upstream.refresh(m, '')) });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
 createFsApi({
-  perms,
+  perms, upstream,
   broadcast, getMounts: getMountsCached, roots: defaultRoots(),
   detect: process.env.FS_ROOTS ? null : defaultDetect,
 }).registerRoutes(app);
@@ -546,6 +577,6 @@ const sync = createSyncManager({
 });
 sync.registerRoutes(app);
 
-perms.init().then(() => sync.init())
+Promise.all([perms.init(), upstream.init()]).then(() => sync.init())
   .catch(e => console.error('[sync] init failed:', e.message))
   .finally(() => app.listen(PORT, () => console.log(`RaiDrive Panel on :${PORT}`)));

@@ -171,7 +171,7 @@
   <main>
     <!-- Dashboard -->
     <div class="page active" id="page-dashboard">
-      <div class="page-header"><div><h1>概览</h1><p>RaiDrive CLI 挂载点状态总览</p></div><button class="btn btn-ghost btn-sm" onclick="initDash()">刷新</button></div>
+      <div class="page-header"><div><h1>概览</h1><p>RaiDrive CLI 挂载点状态总览</p></div><button class="btn btn-ghost btn-sm" onclick="initDash(true)">刷新</button></div>
       <div class="stats-row">
         <div class="stat-card"><div class="stat-label">总挂载点</div><div class="stat-value blue" id="s-total">—</div></div>
         <div class="stat-card"><div class="stat-label">Connected</div><div class="stat-value green" id="s-conn">—</div></div>
@@ -197,7 +197,7 @@
             <option value="googledrive">Google Drive</option><option value="onedrive">OneDrive</option>
             <option value="s3">S3 Compatible</option><option value="minio">MinIO</option>
           </select>
-          <button class="btn btn-ghost btn-sm" onclick="fetchMounts()">刷新</button>
+          <button class="btn btn-ghost btn-sm" onclick="fetchMounts(true)">刷新</button>
         </div>
       </div>
       <div class="mount-list" id="mounts-list"><div class="empty"><div class="emo">⏳</div>加载中...</div></div>
@@ -437,6 +437,26 @@
         </div>
       </div>
       <div class="card">
+        <div class="section-title">上游刷新(OpenList / AList)</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;line-height:1.7">
+          挂载的是 OpenList 的 WebDAV 时,目录列表来自 OpenList 自己的缓存。配置后,在文件管理里点 ⟳ 会先让 OpenList 重新读取该目录再列出,不用再去 OpenList 手动刷新。需要有「写入」权限的账号或令牌。
+        </p>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-width:640px">
+          <label style="font-size:12px;color:var(--muted)">挂载点<select id="up-label" onchange="upFill()"></select></label>
+          <label style="font-size:12px;color:var(--muted)">OpenList 地址(留空=取自挂载地址)<input id="up-url" placeholder="http://192.168.100.9:5244"></label>
+          <label style="font-size:12px;color:var(--muted)">用户名<input id="up-user" autocomplete="off"></label>
+          <label style="font-size:12px;color:var(--muted)">密码(留空=不修改)<input id="up-pass" type="password" autocomplete="new-password"></label>
+          <label style="font-size:12px;color:var(--muted)">或 令牌 Token(留空=不修改)<input id="up-token" type="password" autocomplete="off"></label>
+          <label style="font-size:12px;color:var(--muted)">WebDAV 前缀<input id="up-dav" placeholder="/dav"></label>
+        </div>
+        <p id="up-info" style="font-size:12px;color:var(--muted);margin-top:10px"></p>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-primary" onclick="upSave()">保存</button>
+          <button class="btn btn-ghost" onclick="upTest()">测试</button>
+          <button class="btn btn-ghost" onclick="upDelete()">删除配置</button>
+        </div>
+      </div>
+      <div class="card">
         <div class="section-title">关于</div>
         <div style="font-size:13px;color:var(--muted);line-height:2">
           RaiDrive Panel — Node.js + Express + 原生 HTML/CSS<br>
@@ -473,7 +493,7 @@ document.querySelectorAll('.nav-item').forEach(btn => {
     if (page === 'dashboard') initDash();
     if (page === 'mounts')    fetchMounts();
     if (page === 'sync')      fetchSync();
-    if (page === 'settings')  fetchPerms();
+    if (page === 'settings')  { fetchPerms(); fetchUpstream(); }
     if (page === 'files' && window.filesInit) filesInit();
   });
 });
@@ -521,10 +541,49 @@ async function savePerms() {
 }
 async function resetPerms() { renderPerms(await api('DELETE', '/perms')); toast('已恢复默认'); }
 
+// ── Upstream refresh ──────────────────────────────────────────
+let upCfg = {};
+async function fetchUpstream() {
+  try {
+    upCfg = await api('GET', '/upstream');
+    const ms = ((await api('GET', '/list')).mounts || []);
+    const sel = document.getElementById('up-label'), cur = sel.value;
+    sel.innerHTML = ms.map(m => `<option value="${esc(m.label)}">${esc(m.label)}${upCfg[m.label] ? ' ✓' : ''}</option>`).join('');
+    if (cur) sel.value = cur;
+    upFill();
+  } catch {}
+}
+function upFill() {
+  const l = document.getElementById('up-label').value, c = upCfg[l] || {};
+  document.getElementById('up-url').value = c.url || '';
+  document.getElementById('up-user').value = c.username || '';
+  document.getElementById('up-dav').value = c.davPrefix || '';
+  document.getElementById('up-pass').value = ''; document.getElementById('up-token').value = '';
+  document.getElementById('up-info').textContent = upCfg[l] ? `已配置${c.hasToken ? '(令牌)' : c.hasPassword ? '(账号密码)' : '(未填凭据)'}` : '未配置';
+}
+const upBody = () => { const g = id => document.getElementById(id).value.trim();
+  return { type: 'openlist', url: g('up-url'), username: g('up-user'), password: document.getElementById('up-pass').value, token: g('up-token'), davPrefix: g('up-dav') }; };
+async function upSave() {
+  const l = document.getElementById('up-label').value; if (!l) return;
+  const r = await api('PUT', '/upstream/' + encodeURIComponent(l), upBody());
+  if (r.error) { toast('❌ ' + r.error, true); return; }
+  toast('✅ 已保存'); fetchUpstream();
+}
+async function upTest() {
+  await upSave();
+  const r = await api('POST', `/upstream/${encodeURIComponent(document.getElementById('up-label').value)}/test`);
+  toast(r.ok ? '✅ 上游刷新成功' : '❌ ' + r.error, !r.ok);
+}
+async function upDelete() {
+  const l = document.getElementById('up-label').value; if (!l) return;
+  await api('DELETE', '/upstream/' + encodeURIComponent(l)); toast('已删除'); fetchUpstream();
+}
+
 // ── Dashboard ─────────────────────────────────────────────────
-async function initDash() {
+async function initDash(fresh) {
+  const q = fresh === true ? '?fresh=1' : '';
   // Status
-  const st = await api('GET', '/status');
+  const st = await api('GET', '/status' + q);
   document.getElementById('status-out').textContent = st.output || '(无输出)';
   const dot  = document.getElementById('ddot');
   const dtxt = document.getElementById('dtext');
@@ -534,7 +593,7 @@ async function initDash() {
     document.getElementById('s-ver').textContent = st.parsed['Version'] || '—';
   }
   // List
-  const ls = await api('GET', '/list');
+  const ls = await api('GET', '/list' + q);
   const m = ls.mounts || [];
   document.getElementById('s-total').textContent = m.length;
   const conn = m.filter(x => isConnectedState(x.state)).length;
@@ -544,9 +603,10 @@ async function initDash() {
 }
 
 // ── Mounts page ───────────────────────────────────────────────
-async function fetchMounts() {
+async function fetchMounts(fresh) {
   const storage = document.getElementById('filter-storage')?.value;
-  const url = '/list' + (storage ? `?storage=${storage}` : '');
+  const qs = [storage ? `storage=${storage}` : '', fresh === true ? 'fresh=1' : ''].filter(Boolean).join('&');
+  const url = '/list' + (qs ? '?' + qs : '');
   const ls = await api('GET', url);
   renderMountList('mounts-list', ls.mounts || [], true);
   document.getElementById('detail-panel').style.display = 'none';

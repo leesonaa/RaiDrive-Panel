@@ -104,6 +104,11 @@ Google Drive、OneDrive、Dropbox 等需要浏览器 OAuth 授权，在无头容
 
 两种方式任选：在 compose 里设环境变量 `PUID` / `PGID` / `UMASK`，或在面板「设置 → 文件权限」里填写（带一键预设，保存到 `perms.json`，优先于环境变量）。UMASK `000` → 文件 666 / 文件夹 777，`022` → 644 / 755，`002` → 664 / 775。对文件管理的复制/移动/新建文件夹和任务式同步都生效。注意：权限位按 UMASK 统一设置（可执行位不保留）；更改属主需要容器以 root 运行（默认即是）。API：`GET/PUT/DELETE /api/perms`。
 
+### 刷新与上游缓存
+
+- 面板对 `raidrivecli status/list` 做了合并和短时缓存（status 30 秒、list 10 秒，挂载/卸载/添加/删除会立即清除；各「刷新」按钮强制重读），打开页面不再反复拉起守护进程会话。
+- 挂载的是 OpenList / AList 的 WebDAV 时，目录列表来自 OpenList 自己的缓存。在「设置 → 上游刷新」为该挂载点填写 OpenList 账号密码（或 Token，地址默认取自挂载地址），之后在文件管理点 ⟳ 会先让 OpenList 重新读取当前目录再列出。账号需有写入权限；凭据保存在 `upstream.json`（权限 600）。API：`GET/PUT/DELETE /api/upstream[/:label]`、`POST /api/upstream/:label/test`。
+
 ## 任务式同步
 
 raidrivecli 本身没有同步命令，面板在挂载路径与本地目录之间用 rsync 做同步。
