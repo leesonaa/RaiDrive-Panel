@@ -15,6 +15,8 @@ function goPage(page) {
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === page));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + page));
   try { history.replaceState(null, '', '#' + page); } catch {}
+  const nb = document.querySelector(`.nav-item[data-page="${page}"] span`);
+  if (nb) document.getElementById('crumb-now').textContent = nb.textContent;
   window.scrollTo(0, 0);
   if (page === 'dashboard') initDash();
   if (page === 'mounts')    fetchMounts();
@@ -133,7 +135,8 @@ function renderMountList(targetId, mounts, showDetail) {
     el.innerHTML = '<div class="empty">还没有挂载点。<button class="link" onclick="goPage(\'add\')">添加存储</button></div>';
     return;
   }
-  el.innerHTML = mounts.map(m => mountCardHTML(m, showDetail)).join('');
+  el.innerHTML = '<div class="mount-head"><span>存储连接</span><span>服务类型</span><span>本地挂载路径</span><span>状态</span><span></span></div>'
+    + mounts.map(m => mountCardHTML(m, showDetail)).join('');
 }
 
 function tileHTML(svc, m = {}) {
@@ -151,7 +154,6 @@ function mountCardHTML(m, showDetail) {
   const badge   = isConn
     ? `<span class="badge connected">已连接</span>`
     : `<span class="badge disconnected">未连接</span>`;
-  const svcBadge = m.storage ? `<span class="badge svc">${esc(m.storage)}</span>` : '';
   const mountBtn = isConn
     ? `<button class="btn btn-danger btn-sm" onclick="doUnmount('${esc(m.label)}')">卸载</button>`
     : `<button class="btn btn-success btn-sm" onclick="doMount('${esc(m.label)}')">挂载</button>`;
@@ -160,13 +162,16 @@ function mountCardHTML(m, showDetail) {
        <button class="btn btn-danger btn-sm" onclick="doRemove('${esc(m.label)}')">删除</button>`
     : '';
   return `<div class="mount-card">
-    ${tileHTML(svc, m)}
-    <div class="mount-info">
-      <div class="mount-label">${esc(m.label)}</div>
-      <div class="mount-remote">${esc(m.remote || '')}${m.mountPath ? ` → ${esc(m.mountPath)}` : ''}</div>
-      ${m.user ? `<div class="mount-meta">用户 ${esc(m.user)}${m.created ? ' · ' + esc(m.created) : ''}</div>` : ''}
+    <div class="mount-main">
+      ${tileHTML(svc, m)}
+      <div class="mount-info">
+        <div class="mount-label">${esc(m.label)}</div>
+        <div class="mount-remote" title="${esc(m.remote || '')}">${esc(m.remote || '')}</div>
+      </div>
     </div>
-    ${svcBadge}${badge}
+    <div class="mount-svc">${esc(m.storage || (String(m.remote || '').match(/^(\w+):\/\//) || [])[1] || '')}</div>
+    <div class="mount-path" title="${esc(m.mountPath || '')}">${esc(m.mountPath || '')}</div>
+    <div>${badge}</div>
     <div class="mount-actions">${mountBtn}${moreBtn}</div>
   </div>`;
 }

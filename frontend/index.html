@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RaiDrive Panel</title>
+<title>RaiDrive 面板</title>
 <script>
 // Resolve the theme before first paint so there is no flash: saved choice, otherwise the OS setting.
 (function () {
@@ -13,26 +13,32 @@
   document.documentElement.dataset.mode = mode;
 })();
 </script>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230a7667' stroke-width='2' stroke-linecap='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='3.5'/%3E%3Cpath d='M3 14h18'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%23b9e85a'/%3E%3Cpath d='M8 17a3.5 3.5 0 0 1-.4-7A5 5 0 0 1 17 9.5a3.8 3.8 0 0 1-.4 7.5z' fill='none' stroke='%2314240f' stroke-width='1.8' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="app.css">
 <link rel="stylesheet" href="files.css">
 </head>
 <body>
 <div class="app">
-  <header class="topbar">
+  <aside class="side">
     <div class="brand">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3.5"/><path d="M3 14h18"/><circle cx="7.5" cy="16.7" r=".6" fill="currentColor"/></svg>
-      <span>RaiDrive Panel</span>
+      <div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 8.5z"/></svg></div>
+      <div><b>RaiDrive</b><small>面板</small></div>
     </div>
-    <nav class="tabs">
-      <button class="nav-item active" data-page="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>概览</button>
-      <button class="nav-item" data-page="mounts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h16v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M4 14l2.4-8.2A1.5 1.5 0 0 1 7.8 5h8.4a1.5 1.5 0 0 1 1.4 .8L20 14"/><path d="M8 17h.01M12 17h4"/></svg>挂载点</button>
-      <button class="nav-item" data-page="files"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7.5" height="16" rx="1.5"/><rect x="13.5" y="4" width="7.5" height="16" rx="1.5"/></svg>文件管理</button>
-      <button class="nav-item" data-page="sync"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14-4.5L4 9"/><path d="M4 4v5h5"/><path d="M4 13a8 8 0 0 0 14 4.5L20 15"/><path d="M20 20v-5h-5"/></svg>文件同步</button>
-      <button class="nav-item" data-page="add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>添加存储</button>
-      <button class="nav-item" data-page="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14v16H5z"/><path d="M9 9h6M9 13h6M9 17h3"/></svg>日志</button>
-      <button class="nav-item" data-page="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>设置</button>
-    </nav>
+    <div class="side-cap">工作区</div>
+    <button class="nav-item active" data-page="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>总览</span></button>
+    <button class="nav-item" data-page="mounts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01"/></svg><span>挂载点</span></button>
+    <button class="nav-item" data-page="files"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>文件管理</span></button>
+    <button class="nav-item" data-page="sync"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14-4.5L4 9"/><path d="M4 4v5h5"/><path d="M4 13a8 8 0 0 0 14 4.5L20 15"/><path d="M20 20v-5h-5"/></svg><span>同步任务</span></button>
+    <div class="side-cap">系统</div>
+    <button class="nav-item" data-page="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span>实时日志</span></button>
+    <button class="nav-item" data-page="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><span>设置</span></button>
+    <div class="side-end">
+      <button class="nav-item nav-cta" data-page="add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span>添加存储</span></button>
+    </div>
+  </aside>
+  <div class="shell-main">
+  <header class="topbar">
+    <div class="crumb-trail">工作区<i>›</i><b id="crumb-now">总览</b></div>
     <div class="top-end">
       <div class="daemon-pill" title="raidrivecli 守护进程"><div class="dot" id="ddot"></div><span id="dtext">检查中…</span></div>
       <button class="icon-btn" id="theme-btn" title="切换主题" aria-label="切换主题"></button>
@@ -43,7 +49,7 @@
     <!-- Dashboard -->
     <div class="page active" id="page-dashboard">
       <div class="page-header">
-        <div><h1>概览</h1><p id="dash-sum"><b id="s-total">—</b> 个挂载点，<b id="s-conn">—</b> 个已连接，<b id="s-disc">—</b> 个未连接。守护进程版本 <span id="s-ver">—</span></p></div>
+        <div><h1>总览</h1><p id="dash-sum"><b id="s-total">—</b> 个挂载点，<b id="s-conn">—</b> 个已连接，<b id="s-disc">—</b> 个未连接。守护进程版本 <span id="s-ver">—</span></p></div>
         <div class="actions">
           <button class="btn btn-ghost" onclick="initDash(true)">刷新</button>
           <button class="btn btn-primary" onclick="goPage('files')">打开文件管理</button>
@@ -337,6 +343,7 @@
       </section>
     </div>
   </main>
+  </div>
 </div>
 <div id="toasts"></div>
 
