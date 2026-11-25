@@ -22,46 +22,68 @@
   <aside class="side">
     <div class="brand">
       <div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 8.5z"/></svg></div>
-      <div><b>RaiDrive</b><small>面板</small></div>
+      <div><b>RaiDrive 面板</b></div>
     </div>
-    <div class="side-cap">工作区</div>
-    <button class="nav-item active" data-page="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>总览</span></button>
-    <button class="nav-item" data-page="mounts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01"/></svg><span>挂载点</span></button>
+    <div class="side-cap">概览</div>
+    <button class="nav-item active" data-page="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></svg><span>总览</span></button>
+    <div class="side-cap">浏览</div>
     <button class="nav-item" data-page="files"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>文件管理</span></button>
+    <div class="side-cap">管理</div>
+    <button class="nav-item" data-page="mounts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01"/></svg><span>挂载点</span></button>
     <button class="nav-item" data-page="sync"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14-4.5L4 9"/><path d="M4 4v5h5"/><path d="M4 13a8 8 0 0 0 14 4.5L20 15"/><path d="M20 20v-5h-5"/></svg><span>同步任务</span></button>
+    <button class="nav-item" data-page="add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 8.5z"/><path d="M12 11v5M9.5 13.5h5"/></svg><span>添加存储</span></button>
     <div class="side-cap">系统</div>
     <button class="nav-item" data-page="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span>实时日志</span></button>
     <button class="nav-item" data-page="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><span>设置</span></button>
-    <div class="side-end">
-      <button class="nav-item nav-cta" data-page="add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span>添加存储</span></button>
-    </div>
+    <div class="side-end"><b>raidrivecli</b> <span id="side-ver"></span></div>
   </aside>
   <div class="shell-main">
   <header class="topbar">
-    <div class="crumb-trail">工作区<i>›</i><b id="crumb-now">总览</b></div>
+    <div class="crumb-trail"><b id="crumb-now">总览</b></div>
     <div class="top-end">
       <div class="daemon-pill" title="raidrivecli 守护进程"><div class="dot" id="ddot"></div><span id="dtext">检查中…</span></div>
+      <button class="icon-btn" id="refresh-btn" title="刷新" aria-label="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>
       <button class="icon-btn" id="theme-btn" title="切换主题" aria-label="切换主题"></button>
+      <button class="btn btn-primary btn-sm" onclick="goPage('add')" style="height:30px">+ 添加存储</button>
     </div>
   </header>
 
   <main>
     <!-- Dashboard -->
     <div class="page active" id="page-dashboard">
-      <div class="page-header">
-        <div><h1>总览</h1><p id="dash-sum"><b id="s-total">—</b> 个挂载点，<b id="s-conn">—</b> 个已连接，<b id="s-disc">—</b> 个未连接。守护进程版本 <span id="s-ver">—</span></p></div>
-        <div class="actions">
-          <button class="btn btn-ghost" onclick="initDash(true)">刷新</button>
-          <button class="btn btn-primary" onclick="goPage('files')">打开文件管理</button>
-        </div>
+      <div class="dash-top">
+        <section class="hero">
+          <div class="hero-row"><span class="hero-label">挂载状态</span><span class="hero-chip" id="hero-chip"><i class="dot"></i><span id="hero-chip-t">检查中</span></span></div>
+          <div class="hero-num"><span id="s-conn">—</span><small>/ <span id="s-total">—</span> 个挂载点已连接</small></div>
+          <div class="hero-sub"><span id="s-disc">0</span> 个未连接 · 守护进程版本 <span id="s-ver">—</span></div>
+          <div class="hero-bar"><i id="hero-bar"></i></div>
+          <div class="hero-chips" id="hero-chips"></div>
+        </section>
+        <section class="act-card">
+          <h2>进行中的传输</h2>
+          <div id="act-list"><div class="act-empty">没有进行中的传输</div></div>
+        </section>
       </div>
-      <section class="block">
-        <div class="block-head"><h2>挂载点</h2><button class="link" onclick="goPage('mounts')">管理挂载点</button></div>
-        <div class="mount-list" id="dash-mounts"><div class="empty">加载中…</div></div>
-      </section>
-      <section class="block">
-        <details class="fold"><summary>守护进程输出</summary><div class="terminal" id="status-out">获取中…</div></details>
-      </section>
+
+      <div class="sec-cap">快速入口</div>
+      <div class="tiles">
+        <button class="tile t-blue" onclick="goPage('files')"><div class="tile-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
+          <div><b>文件管理</b><span id="tl-files">拖拽即可复制或移动文件</span></div></button>
+        <button class="tile t-teal" onclick="goPage('mounts')"><div class="tile-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01"/></svg></div>
+          <div><b>挂载点<em id="tb-mounts">0</em></b><span id="tl-mounts">—</span></div></button>
+        <button class="tile t-orange" onclick="goPage('sync')"><div class="tile-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14-4.5L4 9"/><path d="M4 4v5h5"/><path d="M4 13a8 8 0 0 0 14 4.5L20 15"/><path d="M20 20v-5h-5"/></svg></div>
+          <div><b>同步任务<em id="tb-sync">0</em></b><span id="tl-sync">—</span></div></button>
+        <button class="tile t-green" onclick="goPage('add')"><div class="tile-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 8.5z"/><path d="M12 11v5M9.5 13.5h5"/></svg></div>
+          <div><b>添加存储</b><span id="tl-add">WebDAV、SFTP、S3 等</span></div></button>
+        <button class="tile t-purple" onclick="goPage('logs')"><div class="tile-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div>
+          <div><b>实时日志</b><span id="tl-logs">命令与守护进程日志</span></div></button>
+        <button class="tile t-grey" onclick="goPage('settings')"><div class="tile-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></div>
+          <div><b>设置</b><span id="tl-set">账号、文件属主、外观</span></div></button>
+      </div>
+
+      <div class="sec-cap">挂载点</div>
+      <div class="mount-list" id="dash-mounts" style="margin-bottom:26px"><div class="empty">加载中…</div></div>
+      <details class="fold"><summary>守护进程输出</summary><div class="terminal" id="status-out">获取中…</div></details>
     </div>
 
     <!-- Mounts -->

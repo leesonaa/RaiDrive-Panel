@@ -47,6 +47,15 @@ function markTheme() {
     b.classList.toggle('btn-ghost', b.dataset.themeMode !== mode);
   });
 }
+document.getElementById('refresh-btn').addEventListener('click', () => {
+  const page = document.querySelector('.page.active')?.id.replace('page-', '');
+  if (page === 'dashboard') initDash(true);
+  else if (page === 'mounts') fetchMounts(true);
+  else if (page === 'sync') fetchSync();
+  else if (page === 'files' && window.filesInit) filesInit();
+  else initDash(true);
+  toast('已刷新');
+});
 document.getElementById('theme-btn').addEventListener('click', () => {
   applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 });
@@ -99,24 +108,87 @@ async function resetPerms() { renderPerms(await api('DELETE', '/perms')); toast(
 // ── Dashboard ─────────────────────────────────────────────────
 async function initDash(fresh) {
   const q = fresh === true ? '?fresh=1' : '';
-  // Status
-  const st = await api('GET', '/status' + q);
+  const [st, ls] = await Promise.all([api('GET', '/status' + q), api('GET', '/list' + q)]);
   document.getElementById('status-out').textContent = st.output || '(无输出)';
   const dot  = document.getElementById('ddot');
   const dtxt = document.getElementById('dtext');
   if (st.ok) { dot.className='dot green'; dtxt.textContent='守护进程运行中'; }
   else        { dot.className='dot red';   dtxt.textContent='守护进程异常';   }
-  if (st.parsed) {
-    document.getElementById('s-ver').textContent = st.parsed['Version'] || '—';
-  }
-  // List
-  const ls = await api('GET', '/list' + q);
+  const ver = (st.parsed && st.parsed['Version']) || '—';
+  document.getElementById('s-ver').textContent = ver;
+  document.getElementById('side-ver').textContent = ver !== '—' ? ver : '';
+
   const m = ls.mounts || [];
-  document.getElementById('s-total').textContent = m.length;
   const conn = m.filter(x => isConnectedState(x.state)).length;
+  document.getElementById('s-total').textContent = m.length;
   document.getElementById('s-conn').textContent  = conn;
   document.getElementById('s-disc').textContent  = m.length - conn;
+  document.getElementById('hero-bar').style.width = (m.length ? Math.round(conn / m.length * 100) : 0) + '%';
+  const chip = document.getElementById('hero-chip');
+  chip.classList.toggle('bad', !st.ok);
+  document.getElementById('hero-chip-t').textContent = st.ok ? '守护进程运行中' : '守护进程异常';
+  document.getElementById('hero-chips').innerHTML = m.map(x => {
+    const t = tileHTML((x.storage || '').toLowerCase(), x).replace('class="mount-icon ', `title="${esc(x.label)}" onclick="goPage('mounts')" class="mount-icon ${isConnectedState(x.state) ? '' : 'off '}`);
+    return t;
+  }).join('');
+  document.getElementById('tb-mounts').textContent = m.length;
+  document.getElementById('tl-mounts').textContent = m.length ? `${conn} 个已连接` : '还没有挂载点';
   renderMountList('dash-mounts', m, false);
+
+  // sync + transfers come from the panel itself, not raidrivecli
+  try {
+    const sj = await api('GET', '/sync/jobs');
+    const jobs = sj.jobs || [];
+    const running = jobs.filter(j => j.running);
+    document.getElementById('tb-sync').textContent = jobs.length;
+    document.getElementById('tl-sync').textContent = running.length ? `${running.length} 个运行中` : jobs.length ? '空闲' : '还没有任务';
+    activity.forEach((v, k) => { if (k.startsWith('s:')) activity.delete(k); });
+    running.forEach(j => activity.set('s:' + j.id, { title: '同步 ' + j.name, pct: j.progress?.pct || 0, sub: j.progress ? `${j.progress.rate} · 剩余 ${j.progress.eta}` : '准备中…' }));
+    const ft = await api('GET', '/fs/tasks');
+    activity.forEach((v, k) => { if (k.startsWith('x:')) activity.delete(k); });
+    (ft.tasks || []).filter(t => t.status === 'running').forEach(t => activity.set('x:' + t.id, xferActivity(t, {})));
+  } catch {}
+  renderActivity();
+}
+
+// ── Active transfers (dashboard card) ─────────────────────────
+const activity = new Map();   // key -> { title, pct, sub }
+function xferActivity(d, prev) {
+  const first = (d.names || [])[0] || prev.first || '';
+  const count = d.count || prev.count || 1;
+  const total = d.totalBytes || 0;
+  return {
+    first, count,
+    title: `${(d.op || prev.op) === 'move' ? '移动' : '复制'} ${first}${count > 1 ? ` 等 ${count} 项` : ''}`,
+    op: d.op || prev.op,
+    pct: total ? Math.min(100, Math.round((d.doneBytes || 0) / total * 100)) : (prev.pct || 0),
+    sub: total ? `${fmtBytes(d.doneBytes || 0)} / ${fmtBytes(total)}${d.rate ? ' · ' + d.rate : ''}` : '准备中…',
+    dest: d.destDir || prev.dest || '',
+  };
+}
+function renderActivity() {
+  const el = document.getElementById('act-list');
+  if (!el) return;
+  if (!activity.size) { el.innerHTML = '<div class="act-empty">没有进行中的传输</div>'; return; }
+  el.innerHTML = [...activity.values()].map(a => `<div class="act-item">
+    <div class="act-title" title="${esc(a.title)}">${esc(a.title)}</div>
+    <div class="act-sub">${esc(a.sub)}${a.dest ? ' → ' + esc(a.dest) : ''}</div>
+    <div class="bar"><i style="width:${a.pct}%"></i></div></div>`).join('');
+}
+function trackActivity(d) {
+  if (d.type === 'xfer') {
+    const k = 'x:' + d.id;
+    if (d.event === 'done') activity.delete(k);
+    else activity.set(k, xferActivity(d, activity.get(k) || {}));
+  } else if (d.type === 'sync') {
+    const k = 's:' + d.jobId;
+    if (d.event === 'status' && d.state !== 'running') activity.delete(k);
+    else if (d.event === 'progress' && d.progress) {
+      const j = (typeof syncJobs !== 'undefined' && syncJobs.find(x => x.id === d.jobId)) || {};
+      activity.set(k, { title: '同步 ' + (j.name || d.jobId), pct: d.progress.pct || 0, sub: `${d.progress.rate} · 剩余 ${d.progress.eta}` });
+    }
+  } else return;
+  renderActivity();
 }
 
 // ── Mounts page ───────────────────────────────────────────────
@@ -367,6 +439,7 @@ logRow({ kind: 'sys', text: '等待日志…' });
 const es = new EventSource('/api/logs');
 es.onmessage = e => {
   const d = JSON.parse(e.data);
+  trackActivity(d);
   if (d.type === 'cmd') addCmdEntry(d);
   if (d.type === 'log') d.msg.split('\n').forEach(addDaemonLine);
   if (d.type === 'sync') onSyncEvent(d);
